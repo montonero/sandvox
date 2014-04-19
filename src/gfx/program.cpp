@@ -49,10 +49,15 @@ static void dumpInfoLog(unsigned int id, GetParameter getParameter, GetLog getLo
     }
 }
 
-static const regex includeRe("#\\s*include\\s+(\"(.*)\"|<(.*)>)\\s*");
+static const regex includeRe("\\s*#\\s*include\\s+(\"(.*)\"|<(.*)>)\\s*");
 
-static void appendPreprocessedSource(string& result, const string& path, const string& file)
+static void appendPreprocessedSource(string& result, const string& path, const string& file, unordered_set<string>& visited)
 {
+    if (visited.count(file))
+        return;
+    
+    visited.insert(file);
+    
     ifstream in(path + "/" + file);
     if (!in) throw std::runtime_error("Error opening file " + file);
     
@@ -69,15 +74,16 @@ static void appendPreprocessedSource(string& result, const string& path, const s
             string include = match[2];
             
             string::size_type slash = file.find_last_of('/');
+            string includeFile = (slash == std::string::npos) ? include : file.substr(0, slash + 1) + include;
             
-            result += "#line 1 1\n";
+            if (!visited.count(include))
+            {
+                result += "#line 1 1\n";
             
-            if (slash == string::npos)
-                appendPreprocessedSource(result, path, include);
-            else
-                appendPreprocessedSource(result, path, file.substr(0, slash + 1) + include);
-            
-            result += "#line " + to_string(lineIndex + 1) + " 0\n";
+                appendPreprocessedSource(result, path, includeFile, visited);
+                
+                result += "#line " + to_string(lineIndex + 1) + " 0\n";
+            }
         }
         else
         {
@@ -89,8 +95,10 @@ static void appendPreprocessedSource(string& result, const string& path, const s
 
 static string getPreprocessedSource(const string& path, const string& file)
 {
+    unordered_set<string> visited;
+    
     string result;
-    appendPreprocessedSource(result, path, file);
+    appendPreprocessedSource(result, path, file, visited);
     
     return result;
 }
