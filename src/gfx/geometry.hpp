@@ -7,6 +7,7 @@ public:
     {
         Type_Vertex,
         Type_Index,
+        Type_Uniform,
         
         Type_Count
     };
@@ -29,6 +30,13 @@ public:
     
     Buffer(Type type, unsigned int elementSize, unsigned int elementCount, Usage usage);
     ~Buffer();
+    
+    template <typename T> T* lock(LockMode mode = Lock_Normal)
+    {
+        assert(sizeof(T) == elementSize);
+        
+        return static_cast<T*>(lock(mode));
+    }
     
     void* lock(LockMode mode = Lock_Normal);
     void unlock();

@@ -5,7 +5,8 @@
 static const GLenum kBufferTarget[Buffer::Type_Count] =
 {
     GL_ARRAY_BUFFER,
-    GL_ELEMENT_ARRAY_BUFFER
+    GL_ELEMENT_ARRAY_BUFFER,
+    GL_UNIFORM_BUFFER
 };
 
 static const GLenum kBufferUsage[Buffer::Usage_Count] =
@@ -83,6 +84,8 @@ void Buffer::unlock()
 void Buffer::upload(unsigned int offset, const void* data, unsigned int size)
 {
     assert(data);
+    assert(offset % elementSize == 0);
+    assert(size % elementSize == 0);
     assert(offset + size <= elementCount * elementSize);
     
     glBindBuffer(kBufferTarget[type], id);
