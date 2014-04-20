@@ -1,33 +1,25 @@
 #include "folderwatcher.hpp"
 
-#include <thread>
-
 #include <CoreServices/CoreServices.h>
 
 static void watchCallback(ConstFSEventStreamRef streamRef, void* clientCallBackInfo,
     size_t numEvents, void* eventPaths, const FSEventStreamEventFlags eventFlags[], const FSEventStreamEventId eventIds[])
 {
-    vector<string> paths;
+    auto changeQueue = static_cast<BlockingQueue<string>*>(clientCallBackInfo);
     
     for (size_t i = 0; i < numEvents; ++i)
     {
-        if (eventFlags[i] & kFSEventStreamEventFlagItemIsFile)
+        const char* path = static_cast<char**>(eventPaths)[i];
+        unsigned int flag = eventFlags[i];
+        
+        if (flag & kFSEventStreamEventFlagItemIsFile)
         {
-            char fullpath[PATH_MAX];
-            
-            if (realpath(static_cast<char**>(eventPaths)[i], fullpath))
-            {
-                paths.push_back(fullpath);
-            }
+            changeQueue->push(path);
         }
     }
-    
-    FolderWatcher* folderWatcher = static_cast<FolderWatcher*>(clientCallBackInfo);
-    
-    folderWatcher->fireCallbacks(paths);
 }
 
-static void watcher(const string& path, FolderWatcher* folderWatcher, function<void()>* stopSignal)
+static void watcher(const string& path, BlockingQueue<string>* changeQueue, function<void()>* stopSignal)
 {
     pthread_setname_np("FolderWatcher");
     
@@ -37,10 +29,10 @@ static void watcher(const string& path, FolderWatcher* folderWatcher, function<v
     CFStringRef cpath = CFStringCreateWithCString(nullptr, path.c_str(), kCFStringEncodingUTF8);
     CFArrayRef cpaths = CFArrayCreate(nullptr, reinterpret_cast<const void**>(&cpath), 1, nullptr);
 
-    CFAbsoluteTime latency = 1.0;
+    CFAbsoluteTime latency = 0.1;
 
     FSEventStreamContext context = {};
-    context.info = folderWatcher;
+    context.info = changeQueue;
     
     FSEventStreamRef stream =
         FSEventStreamCreate(nullptr, watchCallback, &context, cpaths, kFSEventStreamEventIdSinceNow, latency, kFSEventStreamCreateFlagFileEvents);
@@ -52,7 +44,7 @@ static void watcher(const string& path, FolderWatcher* folderWatcher, function<v
 }
 
 FolderWatcher::FolderWatcher(const string& path)
-: watchThread(bind(watcher, path, this, &stopSignal))
+: watchThread(bind(watcher, path, &changeQueue, &stopSignal))
 {
 }
 
@@ -63,41 +55,23 @@ FolderWatcher::~FolderWatcher()
     watchThread.join();
 }
 
-void FolderWatcher::addWatch(const vector<string>& paths, const function<void()>& callback)
+void FolderWatcher::addListener(Listener *listener)
 {
-    auto ptr = make_shared<function<void()>>(callback);
-    
-    {
-        unique_lock<mutex> lock(watchMapMutex);
-        
-        for (auto& p: paths)
-        {
-            char fullpath[PATH_MAX];
-            
-            if (realpath(p.c_str(), fullpath))
-            {
-                watchMap.insert(make_pair(fullpath, ptr));
-            }
-        }
-    }
+    listeners.insert(listener);
 }
 
-void FolderWatcher::fireCallbacks(const vector<string>& paths)
+void FolderWatcher::removeListener(Listener *listener)
 {
-    unordered_set<shared_ptr<function<void()>>> callbacks;
+    listeners.erase(listener);
+}
+
+void FolderWatcher::processChanges()
+{
+    string path;
     
+    while (changeQueue.pop(path))
     {
-        unique_lock<mutex> lock(watchMapMutex);
-        
-        for (auto& p: paths)
-        {
-            auto it = watchMap.find(p);
-            
-            if (it != watchMap.end())
-                callbacks.insert(it->second);
-        }
+        for (auto& l: listeners)
+            l->onFileChanged(path);
     }
-    
-    for (auto& cb: callbacks)
-        (*cb)();
 }
