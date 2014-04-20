@@ -2,7 +2,7 @@
 
 #include "fs/folderwatcher.hpp"
 
-class Program
+class Program: noncopyable
 {
 public:
     explicit Program(unsigned int id, const vector<string>& shaders);

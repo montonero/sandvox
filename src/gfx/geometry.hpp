@@ -1,6 +1,6 @@
 #pragma once
 
-class Buffer
+class Buffer: noncopyable
 {
 public:
     enum Type
@@ -59,7 +59,7 @@ private:
     Usage usage;
 };
 
-class Geometry
+class Geometry: noncopyable
 {
 public:
     enum Format

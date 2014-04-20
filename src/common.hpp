@@ -20,3 +20,10 @@ typedef glm::mat4 mat4;
 
 using namespace std;
 using namespace std::placeholders;
+
+struct noncopyable
+{
+    noncopyable() = default;
+    noncopyable(const noncopyable&) = delete;
+    noncopyable& operator=(const noncopyable&) = delete;
+};
