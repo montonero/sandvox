@@ -1,9 +1,12 @@
 #include "program.hpp"
 
+#include "fs/path.hpp"
+
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
 
 #include <regex>
+#include <fstream>
 
 static int getShaderParameter(unsigned int shader, GLenum pname)
 {
@@ -93,16 +96,6 @@ static void appendPreprocessedSource(string& result, const string& path, const s
     }
 }
 
-static string getPreprocessedSource(const string& path, const string& file)
-{
-    unordered_set<string> visited;
-    
-    string result;
-    appendPreprocessedSource(result, path, file, visited);
-    
-    return result;
-}
-
 static GLenum getShaderType(const string& name)
 {
     if (name.rfind("-vs") == name.length() - 3)
@@ -147,7 +140,7 @@ static unsigned int linkProgram(const vector<unsigned int>& shaders)
         glAttachShader(id, shader);
     
     glLinkProgram(id);
-    
+ 
     if (getProgramParameter(id, GL_LINK_STATUS) != 1)
     {
         string infoLog = getInfoLog(id, getProgramParameter, glGetProgramInfoLog);
@@ -162,8 +155,9 @@ static unsigned int linkProgram(const vector<unsigned int>& shaders)
     return id;
 }
 
-Program::Program(unsigned int id)
-    : id(id)
+Program::Program(unsigned int id, const vector<string>& shaders)
+: id(id)
+, shaders(shaders)
 {
     assert(id > 0);
 }
@@ -178,35 +172,129 @@ void Program::bind()
     glUseProgram(id);
 }
 
-ProgramManager::ProgramManager(const string& sourcePath)
-    : sourcePath(sourcePath)
+void Program::reload(unsigned int newId)
 {
+    assert(newId > 0);
+    
+    glDeleteProgram(id);
+    id = newId;
+}
+
+ProgramManager::ProgramManager(const string& sourcePath, FolderWatcher* watcher)
+: sourcePath(sourcePath)
+, watcher(watcher)
+{
+    if (watcher)
+        watcher->addListener(this);
 }
 
 ProgramManager::~ProgramManager()
 {
     for (auto p: shaders)
         glDeleteShader(p.second);
+    
+    if (watcher)
+        watcher->removeListener(this);
 }
 
 Program* ProgramManager::get(const string& vsName, const string& fsName)
 {
-    string key = vsName + "," + fsName;
+    return getProgram({vsName, fsName});
+}
+
+void ProgramManager::onFileChanged(const string& path)
+{
+    auto sit = shaderSources.lower_bound(make_pair(path, ""));
     
-    auto it = programs.find(key);
-    if (it != programs.end())
-        return it->second.get();
-    
-    unique_ptr<Program>& result = programs[key];
-    assert(!result);
+    for (; sit != shaderSources.end() && sit->first == path; ++sit)
+    {
+        const string& shader = sit->second;
         
-    vector<unsigned int> shaders = {getShader(vsName), getShader(fsName)};
+        printf("Reloading shader %s\n", shader.c_str());
+        
+        getShader(shader, /* cache= */ false);
+        
+        auto pit = programsByShader.lower_bound(make_pair(shader, ""));
+        
+        for (; pit != programsByShader.end() && pit->first == shader; ++pit)
+        {
+            const string& program = pit->second;
+            
+            getProgram(programs[program]->getShaders(), /* cache= */ false);
+        }
+    }
+}
+
+unsigned int ProgramManager::getShader(const string& name, bool cache)
+{
+    const string& key = name;
+    
+    if (cache)
+    {
+        auto it = shaders.find(key);
+        if (it != shaders.end())
+            return it->second;
+    }
     
     try
     {
-        unsigned int id = linkProgram(shaders);
+        unordered_set<string> visited;
         
-        result.reset(new Program(id));
+        string source;
+        appendPreprocessedSource(source, sourcePath, name + ".glsl", visited);
+        
+        unsigned int id = compileShader(source, getShaderType(name));
+        
+        for (auto& p: visited)
+            shaderSources.insert(make_pair(Path::full(sourcePath + "/" + p), name));
+        
+        return shaders[key] = id;
+    }
+    catch (exception& e)
+    {
+        printf("Error compiling shader %s:\n", name.c_str());
+        printf("%s\n", e.what());
+        
+        return shaders[key];
+    }
+}
+
+Program* ProgramManager::getProgram(const vector<string>& shaders, bool cache)
+{
+    string key;
+    
+    for (auto& s: shaders)
+    {
+        key += s;
+        key += ',';
+    }
+    
+    if (cache)
+    {
+        auto it = programs.find(key);
+        if (it != programs.end())
+            return it->second.get();
+    }
+    
+    unique_ptr<Program>& result = programs[key];
+    
+    vector<unsigned int> shaderIds;
+    
+    for (auto& s: shaders)
+    {
+        programsByShader.insert(make_pair(s, key));
+        
+        shaderIds.push_back(getShader(s));
+    }
+    
+    try
+    {
+        unsigned int id = linkProgram(shaderIds);
+        
+        if (result)
+            result->reload(id);
+        else
+            result.reset(new Program(id, shaders));
         
         return result.get();
     }
@@ -219,27 +307,3 @@ Program* ProgramManager::get(const string& vsName, const string& fsName)
     }
 }
 
-unsigned int ProgramManager::getShader(const string& name)
-{
-    const string& key = name;
-    
-    auto it = shaders.find(key);
-    if (it != shaders.end())
-        return it->second;
-    
-    try
-    {
-        string source = getPreprocessedSource(sourcePath, name + ".glsl");
-        
-        unsigned int id = compileShader(source, getShaderType(name));
-        
-        return shaders[key] = id;
-    }
-    catch (exception& e)
-    {
-        printf("Error compiling shader %s:\n", name.c_str());
-        printf("%s\n", e.what());
-        
-        return shaders[key] = 0;
-    }
-}

@@ -12,6 +12,8 @@ add_subdirectory(deps/glfw)
 include_directories(deps/glfw/include)
 include_directories(deps/glm)
 
+include_directories(src)
+
 file(GLOB_RECURSE SOURCES src/*)
 
 add_executable(sandvox ${SOURCES})

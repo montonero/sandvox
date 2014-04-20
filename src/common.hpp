@@ -1,10 +1,13 @@
-#include <vector>
+#include <cassert>
+
 #include <memory>
+#include <functional>
+
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
-#include <cassert>
-#include <fstream>
+#include <set>
 
 #include "glm/glm.hpp"
 
@@ -16,3 +19,4 @@ typedef glm::mat3 mat3;
 typedef glm::mat4 mat4;
 
 using namespace std;
+using namespace std::placeholders;

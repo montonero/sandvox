@@ -8,6 +8,8 @@
 #include "gfx/program.hpp"
 #include "gfx/geometry.hpp"
 
+#include "fs/folderwatcher.hpp"
+
 static void error_callback(int error, const char* description)
 {
     fputs(description, stderr);
@@ -45,14 +47,15 @@ int main()
     glfwShowWindow(window);
     glfwSetKeyCallback(window, key_callback);
     
-    printf("%s\n", glGetString(GL_VERSION));
-    printf("%s\n", glGetString(GL_RENDERER));
+    printf("Version: %s\n", glGetString(GL_VERSION));
+    printf("Renderer: %s\n", glGetString(GL_RENDERER));
     
-    ProgramManager pm("../../src/shaders");
+    FolderWatcher fw("../..");
+    ProgramManager pm("../../src/shaders", &fw);
     
     shared_ptr<Buffer> vb = make_shared<Buffer>(Buffer::Type_Vertex, 12, 3, Buffer::Usage_Static);
     
-    vec3* vptr = (vec3*)vb->lock();
+    vec3* vptr = vb->lock<vec3>();
     vptr[0] = vec3(-1, -1, 0);
     vptr[1] = vec3(+3, -1, 0);
     vptr[2] = vec3(-1, +3, 0);
@@ -62,6 +65,8 @@ int main()
     
     while (!glfwWindowShouldClose(window))
     {
+        fw.processChanges();
+        
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         
@@ -83,5 +88,4 @@ int main()
     glfwDestroyWindow(window);
     
     glfwTerminate();
-    exit(EXIT_SUCCESS);
 }
