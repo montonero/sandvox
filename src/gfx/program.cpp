@@ -62,7 +62,7 @@ static void appendPreprocessedSource(string& result, const string& path, const s
     visited.insert(file);
     
     ifstream in(path + "/" + file);
-    if (!in) throw std::runtime_error("Error opening file " + file);
+    if (!in) throw runtime_error("Error opening file " + file);
     
     smatch match;
     string line;
@@ -103,7 +103,7 @@ static GLenum getShaderType(const string& name)
     if (name.rfind("-fs") == name.length() - 3)
         return GL_FRAGMENT_SHADER;
     
-    throw std::runtime_error("Unrecognized shader type: " + name);
+    throw runtime_error("Unrecognized shader type: " + name);
 }
 
 static unsigned int compileShader(const string& source, GLenum type)
@@ -123,7 +123,7 @@ static unsigned int compileShader(const string& source, GLenum type)
         
         glDeleteShader(id);
         
-        throw std::runtime_error(infoLog);
+        throw runtime_error(infoLog);
     }
     
     dumpInfoLog(id, getShaderParameter, glGetShaderInfoLog);
@@ -147,7 +147,7 @@ static unsigned int linkProgram(const vector<unsigned int>& shaders)
         
         glDeleteProgram(id);
         
-        throw std::runtime_error(infoLog);
+        throw runtime_error(infoLog);
     }
     
     dumpInfoLog(id, getProgramParameter, glGetProgramInfoLog);
@@ -284,7 +284,12 @@ Program* ProgramManager::getProgram(const vector<string>& shaders, bool cache)
     {
         programsByShader.insert(make_pair(s, key));
         
-        shaderIds.push_back(getShader(s));
+        unsigned int id = getShader(s);
+        
+        if (!id)
+            throw runtime_error("Shader " + s + "failed to compile");
+        
+        shaderIds.push_back(id);
     }
     
     try
