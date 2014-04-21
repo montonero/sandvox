@@ -633,6 +633,38 @@ namespace SurfaceNets
         }
     };
     
+    template <int Fraction> struct AdjustableNaiveTraits
+    {
+        template <typename F> struct Value
+        {
+            static pair<vec3, vec3> intersect(const GridVertex& g0, const GridVertex& g1, const F& f, float isolevel, const vec3& corner, const vec3& v0, const vec3& v1)
+            {
+                float t =
+                    (fabsf(g0.iso - g1.iso) > 0.0001)
+                    ? (isolevel - g0.iso) / (g1.iso - g0.iso)
+                    : 0;
+                
+                return make_pair(glm::mix(v0, v1, t), glm::normalize(glm::mix(vec3(g0.nx, g0.ny, g0.nz), vec3(g1.nx, g1.ny, g1.nz), t)));
+            }
+            
+            static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1)
+            {
+                vec3 position;
+                vec3 normal;
+                
+                for (size_t i = 0; i < count; ++i)
+                {
+                    position += points[i].first;
+                    normal += points[i].second;
+                }
+                
+                float n = 1.f / count;
+                
+                return make_pair(glm::mix(position * n, (v0 + v1) / 2.f, Fraction / 8.f), normal * n);
+            }
+        };
+    };
+    
     template <typename F> struct DualContouringTraits
     {
         static pair<vec3, vec3> intersect(const GridVertex& g0, const GridVertex& g1, const F& f, float isolevel, const vec3& corner, const vec3& v0, const vec3& v1)
@@ -718,7 +750,7 @@ namespace SurfaceNets
         }
     };
     
-    template <int Lod, template <typename> class Traits, typename F>
+    template <template <typename> class Traits, typename F>
     pair<unique_ptr<Geometry>, unsigned int> generateSDF(
         const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
     {
@@ -880,7 +912,7 @@ namespace SurfaceNets
             Geometry::Element(offsetof(TerrainVertex, normal), Geometry::Format_Float3),
         };
         
-        return make_pair(unique_ptr<Geometry>(new Geometry(layout, gvb, gib)), ib.size());
+        return make_pair(make_unique<Geometry>(layout, gvb, gib), ib.size());
     }
 }
 
@@ -939,20 +971,35 @@ namespace World
         return [=](const vec3& p) { return max(t(p), u(p)); };
     }
     
+    template <typename T>
+    auto mktwist(T t, const vec3& axis, float scale) -> decltype(auto)
+    {
+        return [=](const vec3& p) { return t(vec3(glm::rotate(mat4(), glm::dot(p, axis) * scale, axis) * vec4(p, 0))); };
+    }
+    
     auto mkworld() -> decltype(auto)
     {
         return
             mkunion(
-                mksubtract(
-                    mksubtract(
+                mkunion(
+                    mkunion(
                         mkunion(
-                            mkunion(
-                                mktranslate(mksphere(5), vec3(7, 0, 0)),
-                                mktranslate(mksphere(7), vec3(-7, 0, 0))),
-                            mkbox(10, 8, 1)),
-                        mktranslate(mkbox(2, 2, 2), vec3(0, 7, 0))),
-                    mktranslate(mkbox(2, 2, 2), vec3(0, -7, 0))),
-                mktranslate(mkrotate(mkcone(2, 6), glm::radians(90.f), vec3(0, 1, 0)), vec3(11, 0, 0)));
+                            mksubtract(
+                                mksubtract(
+                                    mkunion(
+                                        mkunion(
+                                            mktranslate(mksphere(5), vec3(7, 0, 0)),
+                                            mktranslate(mksphere(7), vec3(-7, 0, 0))),
+                                        mkbox(10, 8, 1)),
+                                    mktranslate(mkbox(2, 2, 2), vec3(0, 7.5f, 0))),
+                                mktranslate(mkbox(2, 2, 2), vec3(0, -7, 0))),
+                            mktranslate(mkrotate(mkcone(2, 6), glm::radians(90.f), vec3(0, 1, 0)), vec3(11, 0, 0))),
+                        mktranslate(mkrotate(mkbox(3, 3, 1), glm::radians(45.f), vec3(0, 0, 1)), vec3(5, 8, -2))),
+                    mktranslate(
+                        mkintersect(
+                            mkrotate(mkbox(6, 6, 6), glm::radians(45.f), glm::normalize(vec3(1, 1, 0))),
+                            mkbox(6, 6, 6)), vec3(-30, 0, 0))),
+            mktranslate(mktwist(mkbox(4, 4, 10), vec3(0, 0, 1), 1.f / 10.f), vec3(30, 0, 0)));
     }
 }
 
@@ -964,19 +1011,29 @@ static void error_callback(int error, const char* description)
 pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
 {
     float isolevel = 0.01f;
+    vec3 min = vec3(-40, -16, -16);
+    vec3 max = vec3(40, 16, 16);
 
     switch (index)
     {
     case 0:
-        return MarchingCubes::generateSDF<0>(World::mkworld(), isolevel, vec3(-20, -16, -16), vec3(20, 16, 16), 1);
+        return MarchingCubes::generateSDF<0>(World::mkworld(), isolevel, min, max, 1);
         break;
         
     case 1:
-        return SurfaceNets::generateSDF<0, SurfaceNets::NaiveTraits>(World::mkworld(), isolevel, vec3(-20, -16, -16), vec3(20, 16, 16), 1);
+        return SurfaceNets::generateSDF<SurfaceNets::NaiveTraits>(World::mkworld(), isolevel, min, max, 1);
         break;
         
     case 2:
-        return SurfaceNets::generateSDF<0, SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, vec3(-20, -16, -16), vec3(20, 16, 16), 1);
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<3>::Value>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 3:
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<7>::Value>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 4:
+        return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1);
         break;
         
     default:
