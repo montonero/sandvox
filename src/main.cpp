@@ -15,6 +15,47 @@
 
 #include "eigen.hpp"
 
+#define DUAL 0
+
+struct dual
+{
+    float v, dx, dy, dz;
+    
+    dual(float v, float dx, float dy, float dz): v(v), dx(dx), dy(dy), dz(dz) {}
+    
+    static dual c(float v) { return dual(v, 0, 0, 0); }
+    static dual vx(float v) { return dual(v, 1, 0, 0); }
+    static dual vy(float v) { return dual(v, 0, 1, 0); }
+    static dual vz(float v) { return dual(v, 0, 0, 1); }
+};
+
+dual operator-(const dual& v) { return dual(-v.v, -v.dx, -v.dy, -v.dz); }
+
+dual operator+(const dual& l, const dual& r) { return dual(l.v + r.v, l.dx + r.dx, l.dy + r.dy, l.dz + r.dz); }
+dual operator-(const dual& l, const dual& r) { return dual(l.v - r.v, l.dx - r.dx, l.dy - r.dy, l.dz - r.dz); }
+
+dual operator*(const dual& l, const dual& r)
+{
+    return dual(l.v * r.v, l.dx * r.v + l.v * r.dx, l.dy * r.v + l.v * r.dy, l.dz * r.v + l.v * r.dz);
+}
+
+dual operator*(const dual& l, float r) { return dual(l.v * r, l.dx * r, l.dy * r, l.dz * r); }
+dual operator*(float l, const dual& r) { return dual(l * r.v, l * r.dx, l * r.dy, l * r.dz); }
+dual operator/(const dual& l, float r) { return dual(l.v / r, l.dx / r, l.dy / r, l.dz / r); }
+
+dual abs(const dual& v) { return v.v >= 0 ? v : -v; }
+
+dual max(const dual& l, const dual& r) { return l.v >= r.v ? l : r; }
+dual min(const dual& l, const dual& r) { return l.v <= r.v ? l : r; }
+
+dual sin(const dual& v) { return dual(sinf(v.v), cosf(v.v)*v.dx, cosf(v.v)*v.dy, cosf(v.v)*v.dz); }
+dual cos(const dual& v) { return dual(cosf(v.v), -sinf(v.v)*v.dx, -sinf(v.v)*v.dy, -sinf(v.v)*v.dz); }
+
+dual sqrt(const dual& v) { return v.v > 0 ? dual(sqrtf(v.v), 0.5f/sqrtf(v.v)*v.dx, 0.5f/sqrtf(v.v)*v.dy, 0.5f/sqrtf(v.v)*v.dz) : dual::c(0); }
+
+dual length(const dual& x, const dual& y) { return sqrt(x * x + y * y); }
+dual length(const dual& x, const dual& y, const dual& z) { return sqrt(x * x + y * y + z * z); }
+
 static const unsigned short MC_EDGETABLE[] =
 {
     0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -351,6 +392,29 @@ struct TerrainVertex
     vec3 normal;
 };
 
+#if DUAL
+template <typename F>
+GridVertex evaluateSDF(const F& f, const vec3& p)
+{
+    dual d = f(dual::vx(p.x), dual::vy(p.y), dual::vz(p.z));
+    
+    return { d.v, d.dx, d.dy, d.dz };
+}
+#else
+template <typename F>
+GridVertex evaluateSDF(const F& f, const vec3& p)
+{
+    float grad = 0.01f;
+    
+    float iso = f(p);
+    float nx = f(p + vec3(grad, 0, 0)) - iso;
+    float ny = f(p + vec3(0, grad, 0)) - iso;
+    float nz = f(p + vec3(0, 0, grad)) - iso;
+    
+    return { iso, nx, ny, nz };
+}
+#endif
+
 namespace MarchingCubes
 {
     template <int Lod>
@@ -510,29 +574,18 @@ namespace MarchingCubes
                 }
                 
                 // add indices
-                for (int i = 0; i < 15; ++i)
+                for (int i = 0; i < 15; i += 3)
                 {
                     if (MC_TRITABLE[cubeindex][i] < 0)
                         break;
                     
-                    ib.push_back(edges[MC_TRITABLE[cubeindex][i]]);
+                    ib.push_back(edges[MC_TRITABLE[cubeindex][i+0]]);
+                    ib.push_back(edges[MC_TRITABLE[cubeindex][i+2]]);
+                    ib.push_back(edges[MC_TRITABLE[cubeindex][i+1]]);
                 }
             }
         }
     };
-    
-    template <typename F>
-    GridVertex evaluateSDF(const F& f, const vec3& p)
-    {
-        float grad = 0.01f;
-        
-        float iso = f(p);
-        float nx = f(p + vec3(grad, 0, 0)) - iso;
-        float ny = f(p + vec3(0, grad, 0)) - iso;
-        float nz = f(p + vec3(0, 0, grad)) - iso;
-        
-        return { iso, nx, ny, nz };
-    }
     
     template <int Lod, typename F>
     pair<unique_ptr<Geometry>, unsigned int> generateSDF(
@@ -591,19 +644,6 @@ namespace MarchingCubes
 
 namespace SurfaceNets
 {
-    template <typename F>
-    GridVertex evaluateSDF(const F& f, const vec3& p)
-    {
-        float grad = 0.01f;
-        
-        float iso = f(p);
-        float nx = f(p + vec3(grad, 0, 0)) - iso;
-        float ny = f(p + vec3(0, grad, 0)) - iso;
-        float nz = f(p + vec3(0, 0, grad)) - iso;
-        
-        return { iso, nx, ny, nz };
-    }
-    
     template <typename F> struct NaiveTraits
     {
         static pair<vec3, vec3> intersect(const GridVertex& g0, const GridVertex& g1, const F& f, float isolevel, const vec3& corner, const vec3& v0, const vec3& v1)
@@ -680,7 +720,7 @@ namespace SurfaceNets
             for (int i = 0; i < 10; ++i)
             {
                 float t = (isolevel - miniso) / (maxiso - miniso) * (maxt - mint) + mint;
-                float iso = f(glm::mix(v0, v1, t) + corner);
+                float iso = evaluateSDF(f, glm::mix(v0, v1, t) + corner).iso;
                 
                 if (iso < isolevel)
                     mint = t, miniso = iso;
@@ -750,6 +790,48 @@ namespace SurfaceNets
         }
     };
     
+    TerrainVertex normalLerp(const TerrainVertex& v, const vec3& avgp, const vec3& qn)
+    {
+        float k = glm::dot(v.position - avgp, v.position - avgp);
+        
+        k = 1 - (1 - k) * (1 - k);
+        
+        return TerrainVertex {v.position, glm::normalize(glm::mix(v.normal, qn, glm::clamp(k, 0.f, 1.f)))};
+    }
+    
+    void pushQuad(vector<TerrainVertex>& vb, vector<unsigned int>& ib,
+        const pair<vec3, TerrainVertex>& v0, const pair<vec3, TerrainVertex>& v1, const pair<vec3, TerrainVertex>& v2, const pair<vec3, TerrainVertex>& v3,
+        bool flip)
+    {
+        size_t offset = vb.size();
+        
+        vec3 qn = (flip ? -1.f : 1.f) * glm::normalize(glm::cross(v1.second.position - v0.second.position, v2.second.position - v0.second.position));
+        
+        vb.push_back(normalLerp(v0.second, v0.first, qn));
+        vb.push_back(normalLerp(v1.second, v1.first, qn));
+        vb.push_back(normalLerp(v2.second, v2.first, qn));
+        vb.push_back(normalLerp(v3.second, v3.first, qn));
+        
+        if (flip)
+        {
+            ib.push_back(offset + 0);
+            ib.push_back(offset + 2);
+            ib.push_back(offset + 1);
+            ib.push_back(offset + 0);
+            ib.push_back(offset + 3);
+            ib.push_back(offset + 2);
+        }
+        else
+        {
+            ib.push_back(offset + 0);
+            ib.push_back(offset + 1);
+            ib.push_back(offset + 2);
+            ib.push_back(offset + 0);
+            ib.push_back(offset + 2);
+            ib.push_back(offset + 3);
+        }
+    }
+    
     template <template <typename> class Traits, typename F>
     pair<unique_ptr<Geometry>, unsigned int> generateSDF(
         const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
@@ -770,7 +852,7 @@ namespace SurfaceNets
                 for (int x = 0; x < sizeX; ++x)
                     grid[x + sizeX * (y + sizeY * z)] = evaluateSDF(f, min + vec3(x, y, z) * cubesize);
         
-        unique_ptr<TerrainVertex[]> gv(new TerrainVertex[sizeX * sizeY * sizeZ]);
+        unique_ptr<pair<vec3, TerrainVertex>[]> gv(new pair<vec3, TerrainVertex>[sizeX * sizeY * sizeZ]);
         
         for (int z = 0; z + 1 < sizeZ; ++z)
             for (int y = 0; y + 1 < sizeY; ++y)
@@ -805,6 +887,7 @@ namespace SurfaceNets
                         
                         pair<vec3, vec3> ev[12];
                         size_t ecount = 0;
+                        vec3 evavg;
                         
                         // add vertices
                         for (int i = 0; i < 12; ++i)
@@ -826,12 +909,13 @@ namespace SurfaceNets
                                 pair<vec3, vec3> gt = Traits<F>::intersect(g0, g1, f, isolevel, corner, vec3(p0x, p0y, p0z) * cubesize, vec3(p1x, p1y, p1z) * cubesize);
                                 
                                 ev[ecount++] = gt;
+                                evavg += gt.first;
                             }
                         }
                         
                         pair<vec3, vec3> ga = Traits<F>::average(ev, ecount, vec3(), vec3(cubesize));
                         
-                        gv[x + sizeX * (y + sizeY * z)] = { corner + ga.first, glm::normalize(ga.second) };
+                        gv[x + sizeX * (y + sizeY * z)] = make_pair(corner + evavg / float(ecount), TerrainVertex { corner + ga.first, glm::normalize(ga.second) });
                     }
                 }
         
@@ -847,53 +931,32 @@ namespace SurfaceNets
                     // add quads
                     if ((v000.iso < isolevel) != (v100.iso < isolevel))
                     {
-                        size_t offset = vb.size();
-                        
-                        vb.push_back(gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z - 1))]);
-                        vb.push_back(gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z - 1))]);
-                        
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 1);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 3);
+                        pushQuad(vb, ib,
+                            gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))],
+                            gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z + 0))],
+                            gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z - 1))],
+                            gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z - 1))],
+                            !(v000.iso < isolevel));
                     }
                     
                     if ((v000.iso < isolevel) != (v010.iso < isolevel))
                     {
-                        size_t offset = vb.size();
-                        
-                        vb.push_back(gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z - 1))]);
-                        vb.push_back(gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z - 1))]);
-                        
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 1);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 3);
+                        pushQuad(vb, ib,
+                            gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))],
+                            gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z + 0))],
+                            gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z - 1))],
+                            gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z - 1))],
+                            v000.iso < isolevel);
                     }
                     
                     if ((v000.iso < isolevel) != (v001.iso < isolevel))
                     {
-                        size_t offset = vb.size();
-                        
-                        vb.push_back(gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x - 1) + sizeX * ((y - 1) + sizeY * (z + 0))]);
-                        vb.push_back(gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z + 0))]);
-                        
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 1);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 0);
-                        ib.push_back(offset + 2);
-                        ib.push_back(offset + 3);
+                        pushQuad(vb, ib,
+                            gv[(x + 0) + sizeX * ((y + 0) + sizeY * (z + 0))],
+                            gv[(x - 1) + sizeX * ((y + 0) + sizeY * (z + 0))],
+                            gv[(x - 1) + sizeX * ((y - 1) + sizeY * (z + 0))],
+                            gv[(x + 0) + sizeX * ((y - 1) + sizeY * (z + 0))],
+                            !(v000.iso < isolevel));
                     }
                 }
         
@@ -918,6 +981,101 @@ namespace SurfaceNets
 
 namespace World
 {
+#if DUAL
+    template <typename T>
+    auto mktransform(T t, const mat4& xf) -> decltype(auto)
+    {
+        mat4 xfi = glm::inverse(xf);
+        
+        return [=](const dual& px, const dual& py, const dual& pz)
+        {
+            dual ptx = px * xfi[0][0] + py * xfi[1][0] + pz * xfi[2][0] + dual::c(xfi[3][0]);
+            dual pty = px * xfi[0][1] + py * xfi[1][1] + pz * xfi[2][1] + dual::c(xfi[3][1]);
+            dual ptz = px * xfi[0][2] + py * xfi[1][2] + pz * xfi[2][2] + dual::c(xfi[3][2]);
+            
+            return t(ptx, pty, ptz);
+        };
+    }
+    
+    template <typename T>
+    auto mktranslate(T t, const vec3& v) -> decltype(auto)
+    {
+        return mktransform(t, glm::translate(mat4(), v));
+    }
+    
+    template <typename T>
+    auto mkrotate(T t, float angle, const vec3& axis) -> decltype(auto)
+    {
+        return mktransform(t, glm::rotate(mat4(), angle, axis));
+    }
+    
+    auto mksphere(float radius) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz)
+        {
+            return length(px, py, pz) - dual::c(radius);
+        };
+    }
+    
+    auto mkbox(float ex, float ey, float ez) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz)
+        {
+            dual dx = abs(px) - dual::c(ex), dy = abs(py) - dual::c(ey), dz = abs(pz) - dual::c(ez);
+            
+            dual face = min(max(dx, max(dy, dz)), dual::c(0));
+            dual edge = length(max(dx, dual::c(0)), max(dy, dual::c(0)), max(dz, dual::c(0)));
+            
+            return face + edge;
+        };
+    }
+    
+    auto mkcone(float radius, float height) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz)
+        {
+            dual q = length(px, py);
+            return pz.v <= 0
+                ? length(pz, max(q - dual::c(radius), dual::c(0)))
+                : pz.v > height
+                    ? length(px, py, pz - dual::c(height))
+                    : q - (dual::c(1) - pz / height) * radius;
+        };
+    }
+    
+    template <typename T, typename U>
+    auto mkunion(T t, U u) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz) { return min(t(px, py, pz), u(px, py, pz)); };
+    }
+    
+    template <typename T, typename U>
+    auto mksubtract(T t, U u) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz) { return max(t(px, py, pz), -u(px, py, pz)); };
+    }
+    
+    template <typename T, typename U>
+    auto mkintersect(T t, U u) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz) { return max(t(px, py, pz), u(px, py, pz)); };
+    }
+    
+    template <typename T>
+    auto mktwist(T t, float scale) -> decltype(auto)
+    {
+        return [=](const dual& px, const dual& py, const dual& pz)
+        {
+            dual angle = -pz * scale;
+            dual sina = sin(angle), cosa = cos(angle);
+            
+            dual prx = px * cosa + py * sina;
+            dual pry = px * -sina + py * cosa;
+            
+            return t(prx, pry, pz);
+        };
+    }
+#else
     template <typename T>
     auto mktransform(T t, const mat4& xf) -> decltype(auto)
     {
@@ -972,10 +1130,11 @@ namespace World
     }
     
     template <typename T>
-    auto mktwist(T t, const vec3& axis, float scale) -> decltype(auto)
+    auto mktwist(T t, float scale) -> decltype(auto)
     {
-        return [=](const vec3& p) { return t(vec3(glm::rotate(mat4(), glm::dot(p, axis) * scale, axis) * vec4(p, 0))); };
+        return [=](const vec3& p) { return t(vec3(glm::rotate(mat4(), p.z * scale, vec3(0.f, 0.f, 1.f)) * vec4(p, 0))); };
     }
+#endif
     
     auto mkworld() -> decltype(auto)
     {
@@ -999,7 +1158,7 @@ namespace World
                         mkintersect(
                             mkrotate(mkbox(6, 6, 6), glm::radians(45.f), glm::normalize(vec3(1, 1, 0))),
                             mkbox(6, 6, 6)), vec3(-30, 0, 0))),
-            mktranslate(mktwist(mkbox(4, 4, 10), vec3(0, 0, 1), 1.f / 10.f), vec3(30, 0, 0)));
+            mktranslate(mktwist(mkbox(4, 4, 10), 1.f / 10.f), vec3(30, 0, 0)));
     }
 }
 
@@ -1115,7 +1274,7 @@ int main()
         glClearDepth(1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        glDisable(GL_CULL_FACE);
+        glEnable(GL_CULL_FACE);
         
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
         
