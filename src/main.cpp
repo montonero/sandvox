@@ -779,13 +779,13 @@ namespace SurfaceNets
             return make_pair(glm::mix(v0, v1, t), glm::normalize(vec3(g.nx, g.ny, g.nz)));
         }
         
-        static vec3 cg(const mat3& A, const vec3& B, const vec3& x0, int iterations)
+        static vec3 cg(const mat3& A, const vec3& B, const vec3& x0)
         {
             vec3 r = B - A * x0;
             vec3 p = r;
             vec3 x = x0;
             
-            for (int i = 0; i < iterations; ++i)
+            for (int i = 0; i < 3; ++i)
             {
                 vec3 Ap = A * p;
                 
@@ -837,7 +837,7 @@ namespace SurfaceNets
                 atb[2] += n.z * pn;
             }
             
-            vec3 mp = cg(mat3(ata[0], ata[1], ata[2], ata[1], ata[3], ata[4], ata[2], ata[4], ata[5]), vec3(atb[0], atb[1], atb[2]), avg.first, 10);
+            vec3 mp = cg(mat3(ata[0], ata[1], ata[2], ata[1], ata[3], ata[4], ata[2], ata[4], ata[5]), vec3(atb[0], atb[1], atb[2]), avg.first);
             
             return make_pair(mp, avg.second);
         }
@@ -852,13 +852,48 @@ namespace SurfaceNets
         return TerrainVertex {v.position, glm::normalize(glm::mix(v.normal, qn, glm::clamp(k, 0.f, 1.f)))};
     }
     
+    float norm(const vec3& v)
+    {
+        return v.x * v.x + v.y * v.y + v.z * v.z;
+    }
+    
+    vec3 getQuadNormal(const vec3& v0, const vec3& v1, const vec3& v2, const vec3& v3)
+    {
+        float v01 = norm(v0 - v1);
+        float v12 = norm(v1 - v2);
+        float v23 = norm(v2 - v3);
+        float v30 = norm(v3 - v0);
+        
+        float v012 = v01 * v12;
+        float v123 = v12 * v23;
+        float v230 = v23 * v30;
+        float v301 = v30 * v01;
+        
+        if (v012 > v123 && v012 > v230 && v012 > v301)
+        {
+            return glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        }
+        else if (v123 > v230 && v123 > v301)
+        {
+            return glm::normalize(glm::cross(v2 - v1, v3 - v1));
+        }
+        else if (v230 > v301)
+        {
+            return glm::normalize(glm::cross(v3 - v2, v0 - v2));
+        }
+        else
+        {
+            return glm::normalize(glm::cross(v0 - v3, v1 - v3));
+        }
+    }
+    
     void pushQuad(vector<TerrainVertex>& vb, vector<unsigned int>& ib,
         const pair<vec3, TerrainVertex>& v0, const pair<vec3, TerrainVertex>& v1, const pair<vec3, TerrainVertex>& v2, const pair<vec3, TerrainVertex>& v3,
         bool flip)
     {
         size_t offset = vb.size();
         
-        vec3 qn = (flip ? -1.f : 1.f) * glm::normalize(glm::cross(v1.second.position - v0.second.position, v2.second.position - v0.second.position));
+        vec3 qn = (flip ? -1.f : 1.f) * getQuadNormal(v0.second.position, v1.second.position, v2.second.position, v3.second.position);
         
         vb.push_back(normalLerp(v0.second, v0.first, qn));
         vb.push_back(normalLerp(v1.second, v1.first, qn));
