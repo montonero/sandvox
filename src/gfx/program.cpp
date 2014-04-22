@@ -278,22 +278,22 @@ Program* ProgramManager::getProgram(const vector<string>& shaders, bool cache)
     
     unique_ptr<Program>& result = programs[key];
     
-    vector<unsigned int> shaderIds;
-    
-    for (auto& s: shaders)
-    {
-        programsByShader.insert(make_pair(s, key));
-        
-        unsigned int id = getShader(s);
-        
-        if (!id)
-            throw runtime_error("Shader " + s + "failed to compile");
-        
-        shaderIds.push_back(id);
-    }
-    
     try
     {
+        vector<unsigned int> shaderIds;
+        
+        for (auto& s: shaders)
+        {
+            programsByShader.insert(make_pair(s, key));
+            
+            unsigned int id = getShader(s);
+            
+            if (!id)
+                throw runtime_error("Shader " + s + "failed to compile");
+            
+            shaderIds.push_back(id);
+        }
+        
         unsigned int id = linkProgram(shaderIds);
         
         if (result)

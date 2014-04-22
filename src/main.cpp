@@ -1417,9 +1417,9 @@ int main()
     FolderWatcher fw("../..");
     ProgramManager pm("../../src/shaders", &fw);
     
-    auto chunk = generateWorld(0);
+    auto chunk = generateWorld(5);
     
-    auto brushGeom = generateSphere(3);
+    auto brushGeom = generateSphere(0.1);
     
     camera.setView(vec3(0.5f, 35.f, 42.f), quat(cameraAngles = vec3(0.f, 0.83f, 4.683f)));
     
@@ -1437,7 +1437,7 @@ int main()
 	
 	dynamicsWorld.setGravity(btVector3(0,-10,0));
 
-    if (false)
+    if (true)
     {
         btTransform groundTransform;
         groundTransform.setIdentity();
