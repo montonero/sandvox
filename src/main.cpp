@@ -656,7 +656,7 @@ namespace SurfaceNets
             return make_pair(glm::mix(v0, v1, t), glm::mix(vec3(g0.nx, g0.ny, g0.nz), vec3(g1.nx, g1.ny, g1.nz), t));
         }
         
-        static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1)
+        static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1, const vec3& corner)
         {
             vec3 position;
             vec3 normal;
@@ -673,7 +673,7 @@ namespace SurfaceNets
         }
     };
     
-    template <int Fraction> struct AdjustableNaiveTraits
+    template <typename LerpK> struct AdjustableNaiveTraits
     {
         template <typename F> struct Value
         {
@@ -687,7 +687,7 @@ namespace SurfaceNets
                 return make_pair(glm::mix(v0, v1, t), glm::normalize(glm::mix(vec3(g0.nx, g0.ny, g0.nz), vec3(g1.nx, g1.ny, g1.nz), t)));
             }
             
-            static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1)
+            static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1, const vec3& corner)
             {
                 vec3 position;
                 vec3 normal;
@@ -700,7 +700,7 @@ namespace SurfaceNets
                 
                 float n = 1.f / count;
                 
-                return make_pair(glm::mix(position * n, (v0 + v1) / 2.f, Fraction / 8.f), normal * n);
+                return make_pair(LerpK()(corner, position * n, (v0 + v1) / 2.f), normal * n);
             }
         };
     };
@@ -735,58 +735,58 @@ namespace SurfaceNets
             return make_pair(glm::mix(v0, v1, t), glm::normalize(vec3(g.nx, g.ny, g.nz)));
         }
         
-        static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1)
+        static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1, const vec3& corner)
         {
             float mp[3] = {}; // this is the minimizer point of the QEF
             float ata[6] = {}, atb[3] = {}, btb = 0; // QEF data
             float pt[3] = {};
 
-			for (size_t i = 0; i < count; ++i)
+            for (size_t i = 0; i < count; ++i)
             {
                 const vec3& p = points[i].first;
                 const vec3& n = points[i].second;
 
-				// QEF
-				ata[ 0 ] += (float) ( n[ 0 ] * n[ 0 ] );
-				ata[ 1 ] += (float) ( n[ 0 ] * n[ 1 ] );
-				ata[ 2 ] += (float) ( n[ 0 ] * n[ 2 ] );
-				ata[ 3 ] += (float) ( n[ 1 ] * n[ 1 ] );
-				ata[ 4 ] += (float) ( n[ 1 ] * n[ 2 ] );
-				ata[ 5 ] += (float) ( n[ 2 ] * n[ 2 ] );
-				double pn = p[0] * n[0] + p[1] * n[1] + p[2] * n[2] ;
-				atb[ 0 ] += (float) ( n[ 0 ] * pn ) ;
-				atb[ 1 ] += (float) ( n[ 1 ] * pn ) ;
-				atb[ 2 ] += (float) ( n[ 2 ] * pn ) ;
-				btb += (float) pn * (float) pn ;
-				// Minimizer
-				pt[0] += p[0] ;
-				pt[1] += p[1] ;
-				pt[2] += p[2] ;
-			}
-			// we minimize towards the average of all intersection points
-			pt[0] /= count ;
-			pt[1] /= count ;
-			pt[2] /= count ;
-			// Solve
-			float mat[10] ;
-			BoundingBoxf box;
-			box.begin.x = (float) v0[0] ;
-			box.begin.y = (float) v0[1] ;
-			box.begin.z = (float) v0[2] ;
-			box.end.x = (float) v1[0];
-			box.end.y = (float) v1[1];
-			box.end.z = (float) v1[2];
+                // QEF
+                ata[ 0 ] += (float) ( n[ 0 ] * n[ 0 ] );
+                ata[ 1 ] += (float) ( n[ 0 ] * n[ 1 ] );
+                ata[ 2 ] += (float) ( n[ 0 ] * n[ 2 ] );
+                ata[ 3 ] += (float) ( n[ 1 ] * n[ 1 ] );
+                ata[ 4 ] += (float) ( n[ 1 ] * n[ 2 ] );
+                ata[ 5 ] += (float) ( n[ 2 ] * n[ 2 ] );
+                double pn = p[0] * n[0] + p[1] * n[1] + p[2] * n[2] ;
+                atb[ 0 ] += (float) ( n[ 0 ] * pn ) ;
+                atb[ 1 ] += (float) ( n[ 1 ] * pn ) ;
+                atb[ 2 ] += (float) ( n[ 2 ] * pn ) ;
+                btb += (float) pn * (float) pn ;
+                // Minimizer
+                pt[0] += p[0] ;
+                pt[1] += p[1] ;
+                pt[2] += p[2] ;
+            }
+            // we minimize towards the average of all intersection points
+            pt[0] /= count ;
+            pt[1] /= count ;
+            pt[2] /= count ;
+            // Solve
+            float mat[10] ;
+            BoundingBoxf box;
+            box.begin.x = (float) v0[0] ;
+            box.begin.y = (float) v0[1] ;
+            box.begin.z = (float) v0[2] ;
+            box.end.x = (float) v1[0];
+            box.end.y = (float) v1[1];
+            box.end.z = (float) v1[2];
 
-			// eigen.hpp
-			// calculate minimizer point, and return error
-			// QEF: ata, atb, btb
-			// pt is the average of the intersection points
-			// mp is the result
-			// box is a bounding-box for this node
-			// mat is storage for calcPoint() ?
-			calcPoint( ata, atb, btb, pt, mp, &box, mat ) ;
-
-            return make_pair(glm::clamp(vec3(mp[0], mp[1], mp[2]), v0, v1), NaiveTraits<F>::average(points, count, v0, v1).second);
+            // eigen.hpp
+            // calculate minimizer point, and return error
+            // QEF: ata, atb, btb
+            // pt is the average of the intersection points
+            // mp is the result
+            // box is a bounding-box for this node
+            // mat is storage for calcPoint() ?
+            double err = calcPoint( ata, atb, btb, pt, mp, &box, mat ) ;
+            
+            return make_pair(glm::clamp(vec3(mp[0], mp[1], mp[2]), v0, v1), NaiveTraits<F>::average(points, count, v0, v1, corner).second);
         }
     };
     
@@ -913,7 +913,7 @@ namespace SurfaceNets
                             }
                         }
                         
-                        pair<vec3, vec3> ga = Traits<F>::average(ev, ecount, vec3(), vec3(cubesize));
+                        pair<vec3, vec3> ga = Traits<F>::average(ev, ecount, vec3(), vec3(cubesize), corner);
                         
                         gv[x + sizeX * (y + sizeY * z)] = make_pair(corner + evavg / float(ecount), TerrainVertex { corner + ga.first, glm::normalize(ga.second) });
                     }
@@ -983,7 +983,7 @@ namespace World
 {
 #if DUAL
     template <typename T>
-    auto mktransform(T t, const mat4& xf) -> decltype(auto)
+    auto mktransform(T t, const mat4& xf)
     {
         mat4 xfi = glm::inverse(xf);
         
@@ -998,18 +998,18 @@ namespace World
     }
     
     template <typename T>
-    auto mktranslate(T t, const vec3& v) -> decltype(auto)
+    auto mktranslate(T t, const vec3& v)
     {
         return mktransform(t, glm::translate(mat4(), v));
     }
     
     template <typename T>
-    auto mkrotate(T t, float angle, const vec3& axis) -> decltype(auto)
+    auto mkrotate(T t, float angle, const vec3& axis)
     {
         return mktransform(t, glm::rotate(mat4(), angle, axis));
     }
     
-    auto mksphere(float radius) -> decltype(auto)
+    auto mksphere(float radius)
     {
         return [=](const dual& px, const dual& py, const dual& pz)
         {
@@ -1017,7 +1017,7 @@ namespace World
         };
     }
     
-    auto mkbox(float ex, float ey, float ez) -> decltype(auto)
+    auto mkbox(float ex, float ey, float ez)
     {
         return [=](const dual& px, const dual& py, const dual& pz)
         {
@@ -1030,7 +1030,7 @@ namespace World
         };
     }
     
-    auto mkcone(float radius, float height) -> decltype(auto)
+    auto mkcone(float radius, float height)
     {
         return [=](const dual& px, const dual& py, const dual& pz)
         {
@@ -1044,25 +1044,25 @@ namespace World
     }
     
     template <typename T, typename U>
-    auto mkunion(T t, U u) -> decltype(auto)
+    auto mkunion(T t, U u)
     {
         return [=](const dual& px, const dual& py, const dual& pz) { return min(t(px, py, pz), u(px, py, pz)); };
     }
     
     template <typename T, typename U>
-    auto mksubtract(T t, U u) -> decltype(auto)
+    auto mksubtract(T t, U u)
     {
         return [=](const dual& px, const dual& py, const dual& pz) { return max(t(px, py, pz), -u(px, py, pz)); };
     }
     
     template <typename T, typename U>
-    auto mkintersect(T t, U u) -> decltype(auto)
+    auto mkintersect(T t, U u)
     {
         return [=](const dual& px, const dual& py, const dual& pz) { return max(t(px, py, pz), u(px, py, pz)); };
     }
     
     template <typename T>
-    auto mktwist(T t, float scale) -> decltype(auto)
+    auto mktwist(T t, float scale)
     {
         return [=](const dual& px, const dual& py, const dual& pz)
         {
@@ -1077,7 +1077,7 @@ namespace World
     }
 #else
     template <typename T>
-    auto mktransform(T t, const mat4& xf) -> decltype(auto)
+    auto mktransform(T t, const mat4& xf)
     {
         mat4 xfi = glm::inverse(xf);
         
@@ -1085,59 +1085,62 @@ namespace World
     }
     
     template <typename T>
-    auto mktranslate(T t, const vec3& v) -> decltype(auto)
+    auto mktranslate(T t, const vec3& v)
     {
         return mktransform(t, glm::translate(mat4(), v));
     }
     
     template <typename T>
-    auto mkrotate(T t, float angle, const vec3& axis) -> decltype(auto)
+    auto mkrotate(T t, float angle, const vec3& axis)
     {
         return mktransform(t, glm::rotate(mat4(), angle, axis));
     }
     
-    auto mksphere(float radius) -> decltype(auto)
+    auto mksphere(float radius)
     {
         return [=](const vec3& p) { return glm::length(p) - radius; };
     }
     
-    auto mkbox(float ex, float ey, float ez) -> decltype(auto)
+    auto mkbox(float ex, float ey, float ez)
     {
         return [=](const vec3& p) { vec3 d = glm::abs(p) - vec3(ex, ey, ez); return min(max(d.x, max(d.y, d.z)), 0.f) + glm::length(glm::max(d, 0.f)); };
     }
     
-    auto mkcone(float radius, float height) -> decltype(auto)
+    auto mkcone(float radius, float height)
     {
         return [=](const vec3& p) { float q = glm::length(vec2(p.x, p.y)); return p.z <= 0 ? glm::length(vec2(p.z, max(q - radius, 0.f))) : p.z > height ? glm::distance(p, vec3(0, 0, height)) : q - (1 - p.z / height) * radius; };
     }
     
     template <typename T, typename U>
-    auto mkunion(T t, U u) -> decltype(auto)
+    auto mkunion(T t, U u)
     {
         return [=](const vec3& p) { return min(t(p), u(p)); };
     }
     
     template <typename T, typename U>
-    auto mksubtract(T t, U u) -> decltype(auto)
+    auto mksubtract(T t, U u)
     {
         return [=](const vec3& p) { return max(t(p), -u(p)); };
     }
     
     template <typename T, typename U>
-    auto mkintersect(T t, U u) -> decltype(auto)
+    auto mkintersect(T t, U u)
     {
         return [=](const vec3& p) { return max(t(p), u(p)); };
     }
     
     template <typename T>
-    auto mktwist(T t, float scale) -> decltype(auto)
+    auto mktwist(T t, float scale)
     {
         return [=](const vec3& p) { return t(vec3(glm::rotate(mat4(), p.z * scale, vec3(0.f, 0.f, 1.f)) * vec4(p, 0))); };
     }
 #endif
     
-    auto mkworld() -> decltype(auto)
+    auto mkworld()
     {
+    #if 0
+        return mkrotate(mkcone(2, 6), glm::radians(90.f), vec3(0, 1, 0));
+    #else
         return
             mkunion(
                 mkunion(
@@ -1159,6 +1162,7 @@ namespace World
                             mkrotate(mkbox(6, 6, 6), glm::radians(45.f), glm::normalize(vec3(1, 1, 0))),
                             mkbox(6, 6, 6)), vec3(-30, 0, 0))),
             mktranslate(mktwist(mkbox(4, 4, 10), 1.f / 10.f), vec3(30, 0, 0)));
+    #endif
     }
 }
 
@@ -1167,32 +1171,76 @@ static void error_callback(int error, const char* description)
     fputs(description, stderr);
 }
 
+struct AdjustableLerpKConstant
+{
+    vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
+    {
+        return glm::mix(smoothpt, centerpt, 0.5f);
+    }
+};
+
+struct AdjustableLerpKHeight
+{
+    vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
+    {
+        return glm::mix(smoothpt, centerpt, glm::smoothstep(2.f, 2.5f, corner.z));
+    }
+};
+
+struct AdjustableLerpKRandom
+{
+    vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
+    {
+        return glm::clamp(glm::mix(smoothpt, centerpt + (vec3(rand() / float(RAND_MAX), rand() / float(RAND_MAX), rand() / float(RAND_MAX)) * 2.f - vec3(1.f)) * 0.3f, 0.5f), vec3(0.f), vec3(1.f));
+    }
+};
+
+struct AdjustableLerpKRandomRight
+{
+    vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
+    {
+        return glm::mix(smoothpt, AdjustableLerpKRandom()(corner, smoothpt, centerpt), glm::smoothstep(3.f, 4.f, corner.x));
+    }
+};
+
 pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
 {
     float isolevel = 0.01f;
     vec3 min = vec3(-40, -16, -16);
     vec3 max = vec3(40, 16, 16);
 
-    switch (index)
+    switch (index + 1)
     {
-    case 0:
+    case 1:
         return MarchingCubes::generateSDF<0>(World::mkworld(), isolevel, min, max, 1);
         break;
         
-    case 1:
+    case 2:
         return SurfaceNets::generateSDF<SurfaceNets::NaiveTraits>(World::mkworld(), isolevel, min, max, 1);
         break;
         
-    case 2:
-        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<3>::Value>(World::mkworld(), isolevel, min, max, 1);
-        break;
-        
     case 3:
-        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<7>::Value>(World::mkworld(), isolevel, min, max, 1);
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<AdjustableLerpKConstant>::Value>(World::mkworld(), isolevel, min, max, 1);
         break;
         
     case 4:
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<AdjustableLerpKHeight>::Value>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 5:
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<AdjustableLerpKRandom>::Value>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 6:
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<AdjustableLerpKRandomRight>::Value>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 7:
         return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 8:
+        return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1.f / 2.f);
         break;
         
     default:
@@ -1201,6 +1249,9 @@ pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
 }
 
 bool wireframe = false;
+float camerau = 1.5;
+float camerav = 0.8;
+float cameradist = 49;
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
@@ -1209,6 +1260,28 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         wireframe = !wireframe;
+    
+    float camerauspeed = 0.1f;
+    float cameravspeed = 0.1f;
+    float cameradistspeed = 1;
+    
+    if (key == GLFW_KEY_LEFT)
+        camerau -= camerauspeed;
+    
+    if (key == GLFW_KEY_RIGHT)
+        camerau += camerauspeed;
+    
+    if (key == GLFW_KEY_DOWN)
+        camerav -= cameravspeed;
+    
+    if (key == GLFW_KEY_UP)
+        camerav += cameravspeed;
+    
+    if (key == GLFW_KEY_PAGE_UP)
+        cameradist -= cameradistspeed;
+    
+    if (key == GLFW_KEY_PAGE_DOWN)
+        cameradist += cameradistspeed;
     
     if (action == GLFW_PRESS && (key >= GLFW_KEY_1 && key <= GLFW_KEY_9))
     {
@@ -1265,7 +1338,10 @@ int main()
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         
-        mat4 view = glm::lookAt(vec3(0, 31, 32), vec3(0, 0, 0), vec3(0, 0, 1));
+        float su = sinf(camerau), cu = cosf(camerau);
+        float sv = sinf(camerav), cv = cosf(camerav);
+        
+        mat4 view = glm::lookAt(cameradist * vec3(cu * sv, su * sv, cv), vec3(0, 0, 0), vec3(0, 0, 1));
         mat4 proj = glm::perspectiveFov(glm::radians(60.f), float(width), float(height), 0.1f, 1000.f);
         mat4 viewproj = proj * view;
         
@@ -1275,6 +1351,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
         
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
         

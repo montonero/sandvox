@@ -30,7 +30,7 @@
 #define ROTATE(a,i,j,k,l) g=a[i][j];h=a[k][l];a[i][j]=g-s*(h+g*tau);a[k][l]=h+s*(g-h*tau);
 
 // used to select solving method in calcPoint()
-int method = 3;
+int method = 2;
 
 // for reducing two upper triangular systems of equations into 1
 void qr ( float *mat1, float *mat2, float *rvalue )
