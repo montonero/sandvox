@@ -8,6 +8,8 @@
 #include "gfx/program.hpp"
 #include "gfx/geometry.hpp"
 
+#include "scene/camera.hpp"
+
 #include "fs/folderwatcher.hpp"
 
 #include "glm/gtc/matrix_transform.hpp"
@@ -15,7 +17,7 @@
 
 #include "eigen.hpp"
 
-#define DUAL 0
+#define DUAL 1
 
 struct dual
 {
@@ -1166,11 +1168,6 @@ namespace World
     }
 }
 
-static void error_callback(int error, const char* description)
-{
-    fputs(description, stderr);
-}
-
 struct AdjustableLerpKConstant
 {
     vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
@@ -1249,39 +1246,27 @@ pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
 }
 
 bool wireframe = false;
-float camerau = 1.5;
-float camerav = 0.8;
-float cameradist = 49;
+Camera camera;
+vec3 cameraAngles;
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+bool keyDown[GLFW_KEY_LAST];
+bool mouseDown[GLFW_MOUSE_BUTTON_LAST];
+double mouseDeltaX, mouseDeltaY;
+double mouseLastX, mouseLastY;
+
+static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+    if (action == GLFW_PRESS)
+        keyDown[key] = true;
+    
+    if (action == GLFW_RELEASE)
+        keyDown[key] = false;
+    
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
     
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         wireframe = !wireframe;
-    
-    float camerauspeed = 0.1f;
-    float cameravspeed = 0.1f;
-    float cameradistspeed = 1;
-    
-    if (key == GLFW_KEY_LEFT)
-        camerau -= camerauspeed;
-    
-    if (key == GLFW_KEY_RIGHT)
-        camerau += camerauspeed;
-    
-    if (key == GLFW_KEY_DOWN)
-        camerav -= cameravspeed;
-    
-    if (key == GLFW_KEY_UP)
-        camerav += cameravspeed;
-    
-    if (key == GLFW_KEY_PAGE_UP)
-        cameradist -= cameradistspeed;
-    
-    if (key == GLFW_KEY_PAGE_DOWN)
-        cameradist += cameradistspeed;
     
     if (action == GLFW_PRESS && (key >= GLFW_KEY_1 && key <= GLFW_KEY_9))
     {
@@ -1295,9 +1280,32 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     }
 }
 
+static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (action == GLFW_PRESS)
+        mouseDown[button] = true;
+    
+    if (action == GLFW_RELEASE)
+        mouseDown[button] = false;
+}
+
+static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    mouseDeltaX += (xpos - mouseLastX);
+    mouseDeltaY += (ypos - mouseLastY);
+    
+    mouseLastX = xpos;
+    mouseLastY = ypos;
+}
+
+static void errorCallback(int error, const char* description)
+{
+    fputs(description, stderr);
+}
+
 int main()
 {
-    glfwSetErrorCallback(error_callback);
+    glfwSetErrorCallback(errorCallback);
     
     if (!glfwInit())
         exit(EXIT_FAILURE);
@@ -1319,7 +1327,9 @@ int main()
     glfwMakeContextCurrent(window);
     
     glfwShowWindow(window);
-    glfwSetKeyCallback(window, key_callback);
+    glfwSetKeyCallback(window, keyCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetCursorPosCallback(window, cursorPosCallback);
     
     printf("Version: %s\n", glGetString(GL_VERSION));
     printf("Renderer: %s\n", glGetString(GL_RENDERER));
@@ -1329,21 +1339,67 @@ int main()
     
     auto geom = generateWorld(0);
     
+    camera.setView(vec3(0.5f, 35.f, 42.f), quat(cameraAngles = vec3(0.f, 0.83f, 4.683f)));
+    
     glfwSetWindowUserPointer(window, &geom);
+    
+    glfwGetCursorPos(window, &mouseLastX, &mouseLastY);
+    
+    clock_t frameStamp = clock();
     
     while (!glfwWindowShouldClose(window))
     {
+        clock_t frameStampNew = clock();
+        double frameTime = (frameStampNew - frameStamp) / double(CLOCKS_PER_SEC);
+        frameStamp = frameStampNew;
+        
+        glfwPollEvents();
+        
+        {
+            vec3 ccposition = camera.getPosition();
+            quat ccorientation = camera.getOrientation();
+            
+            vec3 offset;
+            
+            if (keyDown[GLFW_KEY_W] || keyDown[GLFW_KEY_UP])
+                offset.x += 1;
+            
+            if (keyDown[GLFW_KEY_S] || keyDown[GLFW_KEY_DOWN])
+                offset.x -= 1;
+            
+            if (keyDown[GLFW_KEY_A] || keyDown[GLFW_KEY_LEFT])
+                offset.y += 1;
+            
+            if (keyDown[GLFW_KEY_D] || keyDown[GLFW_KEY_RIGHT])
+                offset.y -= 1;
+            
+            float moveAmount = 2000 * frameTime;
+            
+            ccposition += (ccorientation * offset) * moveAmount;
+            
+            if (mouseDown[GLFW_MOUSE_BUTTON_RIGHT])
+            {
+                float rotateAmount = glm::radians(400.f) * frameTime;
+            
+                cameraAngles += vec3(0.f, rotateAmount * mouseDeltaY, -rotateAmount * mouseDeltaX);
+            }
+                
+            ccorientation = quat(cameraAngles);
+            
+            camera.setView(ccposition, ccorientation);
+        }
+        
+        mouseDeltaX = 0;
+        mouseDeltaY = 0;
+    
         fw.processChanges();
         
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         
-        float su = sinf(camerau), cu = cosf(camerau);
-        float sv = sinf(camerav), cv = cosf(camerav);
+        camera.setProjection(float(width) / height, glm::radians(60.f), 0.1f, 1000.f);
         
-        mat4 view = glm::lookAt(cameradist * vec3(cu * sv, su * sv, cv), vec3(0, 0, 0), vec3(0, 0, 1));
-        mat4 proj = glm::perspectiveFov(glm::radians(60.f), float(width), float(height), 0.1f, 1000.f);
-        mat4 viewproj = proj * view;
+        mat4 viewproj = camera.getViewProjectionMatrix();
         
         glViewport(0, 0, width, height);
         glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
@@ -1369,7 +1425,6 @@ int main()
         }
         
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
     
     glfwDestroyWindow(window);
