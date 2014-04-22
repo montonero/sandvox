@@ -19,5 +19,5 @@ void main()
 		faketex(position.xz) * w.y +
 		faketex(position.yz) * w.x;
 
-	out_color = vec4(vec3(m) * (normal * 0.5 + 0.5), 1);
+	out_color = vec4((normal * 0.5 + 0.5), 1);
 }

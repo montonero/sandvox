@@ -15,8 +15,6 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
-#include "eigen.hpp"
-
 #include "btBulletCollisionCommon.h"
 #include "btBulletDynamicsCommon.h"
 
@@ -781,58 +779,67 @@ namespace SurfaceNets
             return make_pair(glm::mix(v0, v1, t), glm::normalize(vec3(g.nx, g.ny, g.nz)));
         }
         
+        static vec3 cg(const mat3& A, const vec3& B, const vec3& x0, int iterations)
+        {
+            vec3 r = B - A * x0;
+            vec3 p = r;
+            vec3 x = x0;
+            
+            for (int i = 0; i < iterations; ++i)
+            {
+                vec3 Ap = A * p;
+                
+                float pAp = glm::dot(p, Ap);
+                if (fabsf(pAp) < 1e-3f) break;
+                
+                float rr = glm::dot(r, r);
+                if (fabsf(rr) < 1e-3f) break;
+                
+                float alpha = rr / pAp;
+                
+                vec3 xn = x + alpha * p;
+                vec3 rn = r - alpha * Ap;
+                
+                float beta = glm::dot(rn, rn) / rr;
+                
+                vec3 pn = rn + beta * p;
+                
+                r = rn;
+                p = pn;
+                x = xn;
+            }
+            
+            return x;
+        }
+        
         static pair<vec3, vec3> average(const pair<vec3, vec3>* points, size_t count, const vec3& v0, const vec3& v1, const vec3& corner)
         {
-            float mp[3] = {}; // this is the minimizer point of the QEF
-            float ata[6] = {}, atb[3] = {}, btb = 0; // QEF data
-            float pt[3] = {};
+            pair<vec3, vec3> avg = NaiveTraits<F>::average(points, count, v0, v1, corner);
+            
+            float ata[6] = {}, atb[3] = {};
 
             for (size_t i = 0; i < count; ++i)
             {
                 const vec3& p = points[i].first;
                 const vec3& n = points[i].second;
 
-                // QEF
-                ata[ 0 ] += (float) ( n[ 0 ] * n[ 0 ] );
-                ata[ 1 ] += (float) ( n[ 0 ] * n[ 1 ] );
-                ata[ 2 ] += (float) ( n[ 0 ] * n[ 2 ] );
-                ata[ 3 ] += (float) ( n[ 1 ] * n[ 1 ] );
-                ata[ 4 ] += (float) ( n[ 1 ] * n[ 2 ] );
-                ata[ 5 ] += (float) ( n[ 2 ] * n[ 2 ] );
-                double pn = p[0] * n[0] + p[1] * n[1] + p[2] * n[2] ;
-                atb[ 0 ] += (float) ( n[ 0 ] * pn ) ;
-                atb[ 1 ] += (float) ( n[ 1 ] * pn ) ;
-                atb[ 2 ] += (float) ( n[ 2 ] * pn ) ;
-                btb += (float) pn * (float) pn ;
-                // Minimizer
-                pt[0] += p[0] ;
-                pt[1] += p[1] ;
-                pt[2] += p[2] ;
+                ata[0] += n.x * n.x;
+                ata[1] += n.x * n.y;
+                ata[2] += n.x * n.z;
+                ata[3] += n.y * n.y;
+                ata[4] += n.y * n.z;
+                ata[5] += n.z * n.z;
+                
+                float pn = glm::dot(p, n);
+                
+                atb[0] += n.x * pn;
+                atb[1] += n.y * pn;
+                atb[2] += n.z * pn;
             }
-            // we minimize towards the average of all intersection points
-            pt[0] /= count ;
-            pt[1] /= count ;
-            pt[2] /= count ;
-            // Solve
-            float mat[10] ;
-            BoundingBoxf box;
-            box.begin.x = (float) v0[0] ;
-            box.begin.y = (float) v0[1] ;
-            box.begin.z = (float) v0[2] ;
-            box.end.x = (float) v1[0];
-            box.end.y = (float) v1[1];
-            box.end.z = (float) v1[2];
-
-            // eigen.hpp
-            // calculate minimizer point, and return error
-            // QEF: ata, atb, btb
-            // pt is the average of the intersection points
-            // mp is the result
-            // box is a bounding-box for this node
-            // mat is storage for calcPoint() ?
-            double err = calcPoint( ata, atb, btb, pt, mp, &box, mat ) ;
             
-            return make_pair(glm::clamp(vec3(mp[0], mp[1], mp[2]), v0, v1), NaiveTraits<F>::average(points, count, v0, v1, corner).second);
+            vec3 mp = cg(mat3(ata[0], ata[1], ata[2], ata[1], ata[3], ata[4], ata[2], ata[4], ata[5]), vec3(atb[0], atb[1], atb[2]), avg.first, 10);
+            
+            return make_pair(mp, avg.second);
         }
     };
     
@@ -1417,7 +1424,7 @@ int main()
     FolderWatcher fw("../..");
     ProgramManager pm("../../src/shaders", &fw);
     
-    auto chunk = generateWorld(5);
+    auto chunk = generateWorld(6);
     
     auto brushGeom = generateSphere(0.1);
     
