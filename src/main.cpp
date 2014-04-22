@@ -17,6 +17,9 @@
 
 #include "eigen.hpp"
 
+#include "btBulletCollisionCommon.h"
+#include "btBulletDynamicsCommon.h"
+
 #define DUAL 1
 
 struct dual
@@ -417,6 +420,63 @@ GridVertex evaluateSDF(const F& f, const vec3& p)
 }
 #endif
 
+struct MeshPhysicsGeometry: btTriangleIndexVertexArray, noncopyable
+{
+    vector<vec3> vertices;
+    vector<unsigned int> indices;
+    
+    MeshPhysicsGeometry(const vector<TerrainVertex>& vb, const vector<unsigned int>& ib)
+    {
+        vertices.reserve(vb.size());
+        for (auto& v: vb) vertices.push_back(v.position);
+        
+        indices = ib;
+        
+        btIndexedMesh mesh;
+        mesh.m_numTriangles = ib.size() / 3;
+        mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(indices.data());
+        mesh.m_triangleIndexStride = 3 * sizeof(unsigned int);
+        mesh.m_numVertices = vb.size();
+        mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices.data());
+        mesh.m_vertexStride = sizeof(vec3);
+
+        addIndexedMesh(mesh);
+    }
+};
+
+struct Mesh
+{
+    unique_ptr<Geometry> geometry;
+    unsigned int geometryIndices;
+    
+    unique_ptr<MeshPhysicsGeometry> physicsGeometry;
+    unique_ptr<btCollisionShape> physicsShape;
+    
+    static Mesh create(const vector<TerrainVertex>& vb, const vector<unsigned int>& ib)
+    {
+        if (ib.empty())
+            return Mesh();
+        
+        shared_ptr<Buffer> gvb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(TerrainVertex), vb.size(), Buffer::Usage_Static);
+        shared_ptr<Buffer> gib = make_shared<Buffer>(Buffer::Type_Index, sizeof(unsigned int), ib.size(), Buffer::Usage_Static);
+    
+        gvb->upload(0, vb.data(), vb.size() * sizeof(TerrainVertex));
+        gib->upload(0, ib.data(), ib.size() * sizeof(unsigned int));
+        
+        vector<Geometry::Element> layout =
+        {
+            Geometry::Element(offsetof(TerrainVertex, position), Geometry::Format_Float3),
+            Geometry::Element(offsetof(TerrainVertex, normal), Geometry::Format_Float3),
+        };
+        
+        auto physicsGeometry = make_unique<MeshPhysicsGeometry>(vb, ib);
+        
+        unique_ptr<btCollisionShape> physicsShape(new btBvhTriangleMeshShape(physicsGeometry.get(), true));
+        
+        return Mesh { make_unique<Geometry>(layout, gvb, gib), static_cast<unsigned int>(ib.size()), move(physicsGeometry), move(physicsShape) };
+    }
+};
+
 namespace MarchingCubes
 {
     template <int Lod>
@@ -590,8 +650,7 @@ namespace MarchingCubes
     };
     
     template <int Lod, typename F>
-    pair<unique_ptr<Geometry>, unsigned int> generateSDF(
-        const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
+    Mesh generateSDF(const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
     {
         vector<TerrainVertex> vb;
         vector<unsigned int> ib;
@@ -625,22 +684,7 @@ namespace MarchingCubes
                     CubeGenerator<Lod>::generate(vb, ib, v000, v100, v110, v010, v001, v101, v111, v011, isolevel, min + vec3(x, y, z) * cubesize, cubesize);
                 }
         
-        if (ib.empty())
-            return make_pair(unique_ptr<Geometry>(), 0);
-        
-        shared_ptr<Buffer> gvb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(TerrainVertex), vb.size(), Buffer::Usage_Static);
-        shared_ptr<Buffer> gib = make_shared<Buffer>(Buffer::Type_Index, sizeof(unsigned int), ib.size(), Buffer::Usage_Static);
-    
-        gvb->upload(0, vb.data(), vb.size() * sizeof(TerrainVertex));
-        gib->upload(0, ib.data(), ib.size() * sizeof(unsigned int));
-        
-        vector<Geometry::Element> layout =
-        {
-            Geometry::Element(offsetof(TerrainVertex, position), Geometry::Format_Float3),
-            Geometry::Element(offsetof(TerrainVertex, normal), Geometry::Format_Float3),
-        };
-        
-        return make_pair(unique_ptr<Geometry>(new Geometry(layout, gvb, gib)), ib.size());
+        return Mesh::create(vb, ib);
     }
 }
 
@@ -835,8 +879,7 @@ namespace SurfaceNets
     }
     
     template <template <typename> class Traits, typename F>
-    pair<unique_ptr<Geometry>, unsigned int> generateSDF(
-        const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
+    Mesh generateSDF(const F& f, float isolevel, const vec3& min, const vec3& max, float cubesize)
     {
         vector<TerrainVertex> vb;
         vector<unsigned int> ib;
@@ -962,22 +1005,7 @@ namespace SurfaceNets
                     }
                 }
         
-        if (ib.empty())
-            return make_pair(unique_ptr<Geometry>(), 0);
-        
-        shared_ptr<Buffer> gvb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(TerrainVertex), vb.size(), Buffer::Usage_Static);
-        shared_ptr<Buffer> gib = make_shared<Buffer>(Buffer::Type_Index, sizeof(unsigned int), ib.size(), Buffer::Usage_Static);
-    
-        gvb->upload(0, vb.data(), vb.size() * sizeof(TerrainVertex));
-        gib->upload(0, ib.data(), ib.size() * sizeof(unsigned int));
-        
-        vector<Geometry::Element> layout =
-        {
-            Geometry::Element(offsetof(TerrainVertex, position), Geometry::Format_Float3),
-            Geometry::Element(offsetof(TerrainVertex, normal), Geometry::Format_Float3),
-        };
-        
-        return make_pair(make_unique<Geometry>(layout, gvb, gib), ib.size());
+        return Mesh::create(vb, ib);
     }
 }
 
@@ -1200,7 +1228,7 @@ struct AdjustableLerpKRandomRight
     }
 };
 
-pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
+Mesh generateWorld(int index)
 {
     float isolevel = 0.01f;
     vec3 min = vec3(-40, -16, -16);
@@ -1241,13 +1269,65 @@ pair<unique_ptr<Geometry>, unsigned int> generateWorld(int index)
         break;
         
     default:
-        return make_pair(unique_ptr<Geometry>(), 0);
+        return Mesh();
     }
+}
+
+pair<unique_ptr<Geometry>, unsigned int> generateSphere(float radius)
+{
+    vector<TerrainVertex> vb;
+    vector<unsigned int> ib;
+    
+    int U = 10, V = 20;
+    
+    for (int ui = 0; ui < U; ++ui)
+        for (int vi = 0; vi < V; ++vi)
+        {
+            float u = float(ui) / (U - 1) * glm::pi<float>();
+            float v = float(vi) / (V - 1) * 2 * glm::pi<float>();
+        
+            vec3 p = vec3(glm::cos(v) * glm::sin(u), glm::sin(v) * glm::sin(u), glm::cos(u));
+            
+            vb.push_back({p * radius, p});
+        }
+    
+    for (int ui = 0; ui < U; ++ui)
+    {
+        int un = (ui + 1) % U;
+        
+        for (int vi = 0; vi < V; ++vi)
+        {
+            int vn = (vi + 1) % V;
+            
+            ib.push_back(ui * V + vi);
+            ib.push_back(un * V + vi);
+            ib.push_back(un * V + vn);
+            
+            ib.push_back(ui * V + vi);
+            ib.push_back(un * V + vn);
+            ib.push_back(ui * V + vn);
+        }
+    }
+    
+    shared_ptr<Buffer> gvb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(TerrainVertex), vb.size(), Buffer::Usage_Static);
+    shared_ptr<Buffer> gib = make_shared<Buffer>(Buffer::Type_Index, sizeof(unsigned int), ib.size(), Buffer::Usage_Static);
+
+    gvb->upload(0, vb.data(), vb.size() * sizeof(TerrainVertex));
+    gib->upload(0, ib.data(), ib.size() * sizeof(unsigned int));
+    
+    vector<Geometry::Element> layout =
+    {
+        Geometry::Element(offsetof(TerrainVertex, position), Geometry::Format_Float3),
+        Geometry::Element(offsetof(TerrainVertex, normal), Geometry::Format_Float3),
+    };
+    
+    return make_pair(make_unique<Geometry>(layout, gvb, gib), ib.size());
 }
 
 bool wireframe = false;
 Camera camera;
 vec3 cameraAngles;
+vec3 brushPosition;
 
 bool keyDown[GLFW_KEY_LAST];
 bool mouseDown[GLFW_MOUSE_BUTTON_LAST];
@@ -1270,13 +1350,13 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
     
     if (action == GLFW_PRESS && (key >= GLFW_KEY_1 && key <= GLFW_KEY_9))
     {
-        auto p = static_cast<pair<unique_ptr<Geometry>, unsigned int>*>(glfwGetWindowUserPointer(window));
+        auto p = static_cast<Mesh*>(glfwGetWindowUserPointer(window));
         
         clock_t start = clock();
         *p = generateWorld(key - GLFW_KEY_1);
         clock_t end = clock();
         
-        printf("Generated world %d (%d tri) in %.1f msec\n", key - GLFW_KEY_1, p->second / 3, (end - start) * 1000.0 / CLOCKS_PER_SEC);
+        printf("Generated world %d (%d tri) in %.1f msec\n", key - GLFW_KEY_1, p->geometryIndices / 3, (end - start) * 1000.0 / CLOCKS_PER_SEC);
     }
 }
 
@@ -1337,21 +1417,46 @@ int main()
     FolderWatcher fw("../..");
     ProgramManager pm("../../src/shaders", &fw);
     
-    auto geom = generateWorld(0);
+    auto chunk = generateWorld(0);
+    
+    auto brushGeom = generateSphere(3);
     
     camera.setView(vec3(0.5f, 35.f, 42.f), quat(cameraAngles = vec3(0.f, 0.83f, 4.683f)));
     
-    glfwSetWindowUserPointer(window, &geom);
+    glfwSetWindowUserPointer(window, &chunk);
     
     glfwGetCursorPos(window, &mouseLastX, &mouseLastY);
     
     clock_t frameStamp = clock();
+    
+	btDefaultCollisionConfiguration collisionConfiguration;
+	btCollisionDispatcher collisionDispatcher(&collisionConfiguration);
+	btDbvtBroadphase broadphase;
+	btSequentialImpulseConstraintSolver solver;
+	btDiscreteDynamicsWorld dynamicsWorld(&collisionDispatcher, &broadphase, &solver, &collisionConfiguration);
+	
+	dynamicsWorld.setGravity(btVector3(0,-10,0));
+
+    if (false)
+    {
+        btTransform groundTransform;
+        groundTransform.setIdentity();
+
+        btDefaultMotionState* motionState = new btDefaultMotionState(groundTransform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfo(0, motionState, chunk.physicsShape.get(), btVector3(0, 0, 0));
+        
+        btRigidBody* chunkBody = new btRigidBody(rbInfo);
+
+        dynamicsWorld.addRigidBody(chunkBody);
+    }
     
     while (!glfwWindowShouldClose(window))
     {
         clock_t frameStampNew = clock();
         double frameTime = (frameStampNew - frameStamp) / double(CLOCKS_PER_SEC);
         frameStamp = frameStampNew;
+        
+        dynamicsWorld.stepSimulation(frameTime);
         
         glfwPollEvents();
         
@@ -1401,6 +1506,28 @@ int main()
         
         mat4 viewproj = camera.getViewProjectionMatrix();
         
+        if (chunk.physicsShape)
+        {
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
+            
+            vec4 clip0(xpos / width * 2 - 1, 1 - ypos / height * 2, 0, 1);
+            vec4 clip1(xpos / width * 2 - 1, 1 - ypos / height * 2, 1, 1);
+            
+            vec4 pw0 = glm::inverse(viewproj) * clip0;
+            vec4 pw1 = glm::inverse(viewproj) * clip1;
+            
+            vec3 w0(pw0 / pw0.w);
+            vec3 w1(pw1 / pw1.w);
+            
+            btDynamicsWorld::ClosestRayResultCallback callback(btVector3(w0.x, w0.y, w0.z), btVector3(w1.x, w1.y, w1.z));
+            
+            dynamicsWorld.rayTest(callback.m_rayFromWorld, callback.m_rayToWorld, callback);
+            
+            if (callback.hasHit())
+                brushPosition = vec3(callback.m_hitPointWorld.getX(), callback.m_hitPointWorld.getY(), callback.m_hitPointWorld.getZ());
+        }
+        
         glViewport(0, 0, width, height);
         glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
         glClearDepth(1.f);
@@ -1408,6 +1535,7 @@ int main()
         
         glEnable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
         
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
         
@@ -1415,13 +1543,26 @@ int main()
         {
             prog->bind();
             
-            int location = glGetUniformLocation(prog->getId(), "ViewProjection");
-            assert(location >= 0);
+            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "ViewProjection"), 1, false, glm::value_ptr(viewproj));
             
-            glUniformMatrix4fv(location, 1, false, glm::value_ptr(viewproj));
+            if (chunk.geometry)
+                chunk.geometry->draw(Geometry::Primitive_Triangles, 0, chunk.geometryIndices);
+        }
+        
+        if (Program* prog = pm.get("brush-vs", "brush-fs"))
+        {
+            prog->bind();
             
-            if (geom.first)
-                geom.first->draw(Geometry::Primitive_Triangles, 0, geom.second);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            
+            mat4 world = glm::translate(glm::mat4(), brushPosition);
+            
+            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "World"), 1, false, glm::value_ptr(world));
+            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "ViewProjection"), 1, false, glm::value_ptr(viewproj));
+            
+            if (brushGeom.first)
+                brushGeom.first->draw(Geometry::Primitive_Triangles, 0, brushGeom.second);
         }
         
         glfwSwapBuffers(window);
