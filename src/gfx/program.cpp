@@ -180,8 +180,8 @@ void Program::reload(unsigned int newId)
     id = newId;
 }
 
-ProgramManager::ProgramManager(const string& sourcePath, FolderWatcher* watcher)
-: sourcePath(sourcePath)
+ProgramManager::ProgramManager(const string& basePath, FolderWatcher* watcher)
+: basePath(basePath)
 , watcher(watcher)
 {
     if (watcher)
@@ -241,12 +241,12 @@ unsigned int ProgramManager::getShader(const string& name, bool cache)
         unordered_set<string> visited;
         
         string source;
-        appendPreprocessedSource(source, sourcePath, name + ".glsl", visited);
+        appendPreprocessedSource(source, basePath, name + ".glsl", visited);
         
         unsigned int id = compileShader(source, getShaderType(name));
         
         for (auto& p: visited)
-            shaderSources.insert(make_pair(Path::full(sourcePath + "/" + p), name));
+            shaderSources.insert(make_pair(Path::full(basePath + "/" + p), name));
         
         return shaders[key] = id;
     }

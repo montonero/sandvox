@@ -23,6 +23,8 @@ add_definitions(-DGLM_FORCE_RADIANS)
 add_subdirectory(deps/bullet3)
 include_directories(deps/bullet3/src)
 
+include_directories(deps/stb)
+
 include_directories(src)
 
 file(GLOB_RECURSE SOURCES src/*)

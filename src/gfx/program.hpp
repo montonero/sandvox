@@ -23,18 +23,18 @@ private:
 class ProgramManager: public FolderWatcher::Listener
 {
 public:
-    ProgramManager(const string& sourcePath, FolderWatcher* watcher);
+    ProgramManager(const string& basePath, FolderWatcher* watcher);
     ~ProgramManager();
     
     Program* get(const string& vsName, const string& fsName);
     
+private:
     void onFileChanged(const string& path) override;
     
-private:
     unsigned int getShader(const string& name, bool cache = true);
     Program* getProgram(const vector<string>& shaders, bool cache = true);
     
-    string sourcePath;
+    string basePath;
     
     FolderWatcher* watcher;
     

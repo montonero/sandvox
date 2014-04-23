@@ -7,6 +7,7 @@
 
 #include "gfx/program.hpp"
 #include "gfx/geometry.hpp"
+#include "gfx/texture.hpp"
 
 #include "scene/camera.hpp"
 
@@ -1270,13 +1271,30 @@ struct AdjustableLerpKRandomRight
     }
 };
 
+struct AdjustableLerpKQuantize
+{
+    static float quantize(float value, float bound)
+    {
+        return floor(value / bound) * bound;
+    }
+    
+    vec3 operator()(const vec3& corner, const vec3& smoothpt, const vec3& centerpt) const
+    {
+        float bound = 1.f / 3.f;
+        
+        return vec3(quantize(smoothpt.x, bound), quantize(smoothpt.y, bound), quantize(smoothpt.z, bound));
+    }
+};
+
 Mesh generateWorld(int index)
 {
+    srand(42);
+    
     float isolevel = 0.01f;
     vec3 min = vec3(-40, -16, -16);
     vec3 max = vec3(40, 16, 16);
 
-    switch (index + 1)
+    switch (index)
     {
     case 1:
         return MarchingCubes::generateSDF<0>(World::mkworld(), isolevel, min, max, 1);
@@ -1303,10 +1321,14 @@ Mesh generateWorld(int index)
         break;
         
     case 7:
-        return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1);
+        return SurfaceNets::generateSDF<SurfaceNets::AdjustableNaiveTraits<AdjustableLerpKQuantize>::Value>(World::mkworld(), isolevel, min, max, 1);
         break;
         
     case 8:
+        return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1);
+        break;
+        
+    case 9:
         return SurfaceNets::generateSDF<SurfaceNets::DualContouringTraits>(World::mkworld(), isolevel, min, max, 1.f / 2.f);
         break;
         
@@ -1395,7 +1417,7 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
         auto p = static_cast<Mesh*>(glfwGetWindowUserPointer(window));
         
         clock_t start = clock();
-        *p = generateWorld(key - GLFW_KEY_1);
+        *p = generateWorld(key - GLFW_KEY_1 + 1);
         clock_t end = clock();
         
         printf("Generated world %d (%d tri) in %.1f msec\n", key - GLFW_KEY_1, p->geometryIndices / 3, (end - start) * 1000.0 / CLOCKS_PER_SEC);
@@ -1458,8 +1480,9 @@ int main()
     
     FolderWatcher fw("../..");
     ProgramManager pm("../../src/shaders", &fw);
+    TextureManager tm("../../data", &fw);
     
-    auto chunk = generateWorld(6);
+    auto chunk = generateWorld(8);
     
     auto brushGeom = generateSphere(0.1);
     
@@ -1479,7 +1502,7 @@ int main()
 	
 	dynamicsWorld.setGravity(btVector3(0,-10,0));
 
-    if (true)
+    if (false)
     {
         btTransform groundTransform;
         groundTransform.setIdentity();
@@ -1585,6 +1608,11 @@ int main()
         {
             prog->bind();
             
+            tm.get("grass.png").get()->bind(0);
+            tm.get("ground.png").get()->bind(1);
+            
+            glUniform1i(glGetUniformLocation(prog->getId(), "AlbedoTop"), 0);
+            glUniform1i(glGetUniformLocation(prog->getId(), "AlbedoSide"), 1);
             glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "ViewProjection"), 1, false, glm::value_ptr(viewproj));
             
             if (chunk.geometry)
