@@ -1,9 +1,12 @@
 #include "texture.hpp"
 
+#include "fs/path.hpp"
+#include "gfx/image.hpp"
+
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
 
-#include "stb_image.h"
+#include <fstream>
 
 struct TextureFormatGL
 {
@@ -44,6 +47,7 @@ Texture::Texture(Type type, Format format, unsigned int width, unsigned int heig
 , mipLevels(mipLevels)
 {
     assert(width > 0 && height > 0 && depth > 0);
+    assert((type != Type_2D && type != Type_Cube) || depth == 1);
     assert(mipLevels > 0 && mipLevels <= getMaxMipCount(width, height, type == Type_3D ? depth : 1));
     
     GLenum target = kTextureTarget[type];
@@ -187,7 +191,7 @@ void TextureRef::updateAllRefs(const shared_ptr<Texture>& texture)
 }
 
 TextureManager::TextureManager(const string& basePath, FolderWatcher* watcher)
-: basePath(basePath)
+: basePath(Path::full(basePath))
 , watcher(watcher)
 {
     if (watcher)
@@ -220,104 +224,58 @@ TextureRef TextureManager::get(const string& name)
     }
 }
 
-static void scaleLinear(unsigned char* target, unsigned int targetWidth, unsigned int targetHeight, const unsigned char* source, unsigned int sourceWidth, unsigned int sourceHeight)
+shared_ptr<Texture> TextureManager::loadTexture(const string& path)
 {
-    typedef unsigned long long uint64;
-    typedef unsigned int T;
-
-    // srcdata stays at beginning of slice, pdst is a moving pointer
-    const unsigned char* srcdata = source;
-    unsigned char* pdst = target;
-
-    // sx_48,sy_48 represent current position in source
-    // using 16/48-bit fixed precision, incremented by steps
-    uint64 stepx = ((uint64)sourceWidth << 48) / targetWidth;
-    uint64 stepy = ((uint64)sourceHeight << 48) / targetHeight;
+    ifstream in(path, ios::in | ios::binary);
+    unique_ptr<Image> image = Image::load(in);
     
-    // bottom 28 bits of temp are 16/12 bit fixed precision, used to
-    // adjust a source coordinate backwards by half a pixel so that the
-    // integer bits represent the first sample (eg, sx1) and the
-    // fractional bits are the blend weight of the second sample
-    unsigned int temp;
+    shared_ptr<Texture> result = make_shared<Texture>(image->getType(), image->getFormat(), image->getWidth(), image->getHeight(), image->getDepth(), image->getMipLevels());
     
-    uint64 sy_48 = (stepy >> 1) - 1;
-    for (unsigned int y = 0; y < targetHeight; y++, sy_48+=stepy)
+   for (unsigned int index = 0; index < image->getLayers(); ++index)
     {
-        temp = static_cast<unsigned int>(sy_48 >> 36);
-        temp = (temp > 0x800) ? temp - 0x800 : 0;
-        unsigned int syf = temp & 0xFFF;
-        unsigned int sy1 = temp >> 12;
-        unsigned int sy2 = std::min(sy1+1, sourceHeight-1);
-        unsigned int syoff1 = sy1 * sourceWidth;
-        unsigned int syoff2 = sy2 * sourceWidth;
-
-        uint64 sx_48 = (stepx >> 1) - 1;
-        for (unsigned int x = 0; x < targetWidth; x++, sx_48+=stepx)
+        for (unsigned int face = 0; face < image->getFaces(); ++face)
         {
-            temp = static_cast<unsigned int>(sx_48 >> 36);
-            temp = (temp > 0x800) ? temp - 0x800 : 0;
-            unsigned int sxf = temp & 0xFFF;
-            unsigned int sx1 = temp >> 12;
-            unsigned int sx2 = std::min(sx1+1, sourceWidth-1);
-
-            unsigned int sxfsyf = sxf*syf;
-            for (unsigned int k = 0; k < sizeof(T); k++)
+            for (unsigned int mip = 0; mip < image->getMipLevels(); ++mip)
             {
-                unsigned int accum =
-                    srcdata[(sx1 + syoff1)*sizeof(T)+k]*(0x1000000-(sxf<<12)-(syf<<12)+sxfsyf) +
-                    srcdata[(sx2 + syoff1)*sizeof(T)+k]*((sxf<<12)-sxfsyf) +
-                    srcdata[(sx1 + syoff2)*sizeof(T)+k]*((syf<<12)-sxfsyf) +
-                    srcdata[(sx2 + syoff2)*sizeof(T)+k]*sxfsyf;
-
-                // accum is computed using 8/24-bit fixed-point math
-                // (maximum is 0xFF000000; rounding will not cause overflow)
-                *pdst++ = static_cast<unsigned char>((accum + 0x800000) >> 24);
+                unsigned int mipWidth = Texture::getMipSide(image->getWidth(), mip);
+                unsigned int mipHeight = Texture::getMipSide(image->getHeight(), mip);
+                unsigned int mipDepth = image->getType() == Texture::Type_3D ? Texture::getMipSide(image->getDepth(), mip) : 1;
+                
+                unsigned int mipSize = Texture::getImageSize(image->getFormat(), mipWidth, mipHeight) * mipDepth;
+                
+                unsigned char* mipData = image->getData(index, face, mip);
+                
+                result->upload(0, 0, mip, TextureRegion {0, 0, 0, mipWidth, mipHeight, mipDepth}, mipData, mipSize);
             }
         }
     }
-}
-
-shared_ptr<Texture> TextureManager::loadTexture(const string& path)
-{
-    int width, height;
-    unique_ptr<unsigned char, void (*)(void*)> data(stbi_load(path.c_str(), &width, &height, nullptr, 4), stbi_image_free);
-    
-    if (!data)
-    {
-        const char* reason = stbi_failure_reason();
-        
-        throw runtime_error(reason ? reason : "unknown error");
-    }
-    
-    Texture::Format format = Texture::Format_RGBA8;
-    unsigned int mipLevels = Texture::getMaxMipCount(width, height, 1);
-    
-    unsigned int mipBufferSize = Texture::getImageSize(format, Texture::getMipSide(width, 1), Texture::getMipSide(height, 1));
-    unique_ptr<unsigned char[]> mipBuffer(new unsigned char[mipBufferSize]);
-    
-    shared_ptr<Texture> result = make_shared<Texture>(Texture::Type_2D, format, width, height, 1, mipLevels);
-    
-    for (unsigned int mip = 0; mip < mipLevels; ++mip)
-    {
-        unsigned int mipWidth = Texture::getMipSide(width, mip);
-        unsigned int mipHeight = Texture::getMipSide(height, mip);
-        unsigned int mipSize = Texture::getImageSize(format, mipWidth, mipHeight);
-        
-        if (mip != 0)
-        {
-            unsigned int mipWidthPrev = Texture::getMipSide(width, mip - 1);
-            unsigned int mipHeightPrev = Texture::getMipSide(height, mip - 1);
-            
-            scaleLinear(mipBuffer.get(), mipWidth, mipHeight, data.get(), mipWidthPrev, mipHeightPrev);
-            memcpy(data.get(), mipBuffer.get(), mipSize);
-        }
-        
-        result->upload(0, 0, mip, TextureRegion {0, 0, 0, mipWidth, mipHeight, 1}, data.get(), mipSize);
-    }
-    
+ 
     return result;
 }
 
 void TextureManager::onFileChanged(const string& path)
 {
+    string prefix = basePath + "/";
+    
+    if (path.compare(0, prefix.length(), prefix) == 0)
+    {
+        string name = path.substr(prefix.length());
+        
+        auto it = textures.find(name);
+        if (it != textures.end())
+        {
+            printf("Reloading textures %s\n", name.c_str());
+            
+            try
+            {
+                shared_ptr<Texture> texture = loadTexture(basePath + "/" + name);
+                
+                textures[name] = texture;
+            }
+            catch (exception& e)
+            {
+                printf("Error loading texture %s: %s\n", name.c_str(), e.what());
+            }
+        }
+    }
 }
