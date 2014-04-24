@@ -181,7 +181,7 @@ void Program::reload(unsigned int newId)
 }
 
 ProgramManager::ProgramManager(const string& basePath, FolderWatcher* watcher)
-: basePath(basePath)
+: basePath(Path::full(basePath))
 , watcher(watcher)
 {
     if (watcher)
