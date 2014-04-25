@@ -172,6 +172,11 @@ void Program::bind()
     glUseProgram(id);
 }
 
+int Program::getHandle(const char* name) const
+{
+    return glGetUniformLocation(id, name);
+}
+
 void Program::reload(unsigned int newId)
 {
     assert(newId > 0);

@@ -27,6 +27,7 @@ static const GLenum kTextureTarget[Texture::Type_Count] =
 
 static const TextureFormatGL kTextureFormat[Texture::Format_Count] =
 {
+    { 8, GL_R8, GL_RED, GL_UNSIGNED_BYTE },
 	{ 32, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE },
 	{ 64, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT },
 	{ 64, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 0, 0 },
@@ -126,7 +127,7 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
     
     glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
+    
 	glBindTexture(target, 0);
 }
 

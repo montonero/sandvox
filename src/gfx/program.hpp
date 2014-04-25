@@ -10,6 +10,8 @@ public:
     
     void bind();
     
+    int getHandle(const char* name) const;
+    
     void reload(unsigned int newId);
     
     unsigned int getId() const { return id; }

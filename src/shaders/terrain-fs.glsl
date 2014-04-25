@@ -18,12 +18,13 @@ vec4 textureTriplanar(sampler2D top, sampler2D side, vec3 p, vec3 w)
 
 void main()
 {
-	vec3 w = pow(abs(normal), vec3(4));
+	vec3 w = normal * normal;
 	w /= w.x + w.y + w.z;
 
 	vec4 albedo = textureTriplanar(AlbedoTop, AlbedoSide, position / 2, w);
 	float diffuse = max(0, dot(normal, normalize(vec3(1, 1, 1))));
-	float ambient = 0.5f;
+	float ambient = 0.25f;
 
 	out_color = vec4((ambient + diffuse) * albedo.rgb, 1);
+	// out_color = vec4(normal * 0.5 + 0.5, 1);
 }

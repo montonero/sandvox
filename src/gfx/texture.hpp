@@ -29,6 +29,7 @@ public:
 
     enum Format
 	{
+        Format_R8,
         Format_RGBA8,
         Format_RGBA16F,
         Format_BC1,

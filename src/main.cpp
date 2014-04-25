@@ -11,6 +11,10 @@
 
 #include "scene/camera.hpp"
 
+#include "ui/imgui.hpp"
+#include "ui/font.hpp"
+#include "ui/renderer.hpp"
+
 #include "fs/folderwatcher.hpp"
 
 #include "glm/gtc/matrix_transform.hpp"
@@ -1447,6 +1451,47 @@ static void errorCallback(int error, const char* description)
     fputs(description, stderr);
 }
 
+void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int y, const char* text)
+{
+    float sx = 1.f / width, sy = 1.f / height;
+    
+    float xpos = x;
+    float ypos = y;
+    
+    unsigned int lastch = 0;
+    
+    for (const char* s = text; *s; ++s)
+    {
+        if (const Font::Glyph* g = f.getGlyph(*s))
+        {
+            xpos += f.getKerning(lastch, *s);
+            
+            float x0 = floorf(xpos + g->xoffset + 0.5f);
+            float y0 = floorf(ypos + g->yoffset + 0.5f);
+            float x1 = x0 + g->width;
+            float y1 = y0 + g->height;
+            
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), ~0u);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u1, g->v0), ~0u);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), ~0u);
+            
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), ~0u);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), ~0u);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u0, g->v1), ~0u);
+            
+            xpos += g->xadvance;
+            
+            lastch = *s;
+        }
+        else
+        {
+            lastch = 0;
+        }
+    }
+    
+    r.flush(f.getTexture());
+}
+
 int main()
 {
     glfwSetErrorCallback(errorCallback);
@@ -1482,6 +1527,8 @@ int main()
     ProgramManager pm("../../src/shaders", &fw);
     TextureManager tm("../../data", &fw);
     
+    Font font("../../data/Roboto-Regular.ttf", 20);
+    
     auto chunk = generateWorld(8);
     
     auto brushGeom = generateSphere(0.1);
@@ -1514,6 +1561,8 @@ int main()
 
         dynamicsWorld.addRigidBody(chunkBody);
     }
+    
+    ui::Renderer uir(1024, pm.get("ui-vs", "ui-fs"));
     
     while (!glfwWindowShouldClose(window))
     {
@@ -1611,9 +1660,9 @@ int main()
             tm.get("grass.png").get()->bind(0);
             tm.get("ground.png").get()->bind(1);
             
-            glUniform1i(glGetUniformLocation(prog->getId(), "AlbedoTop"), 0);
-            glUniform1i(glGetUniformLocation(prog->getId(), "AlbedoSide"), 1);
-            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "ViewProjection"), 1, false, glm::value_ptr(viewproj));
+            glUniform1i(prog->getHandle("AlbedoTop"), 0);
+            glUniform1i(prog->getHandle("AlbedoSide"), 1);
+            glUniformMatrix4fv(prog->getHandle("ViewProjection"), 1, false, glm::value_ptr(viewproj));
             
             if (chunk.geometry)
                 chunk.geometry->draw(Geometry::Primitive_Triangles, 0, chunk.geometryIndices);
@@ -1628,12 +1677,16 @@ int main()
             
             mat4 world = glm::translate(glm::mat4(), brushPosition);
             
-            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "World"), 1, false, glm::value_ptr(world));
-            glUniformMatrix4fv(glGetUniformLocation(prog->getId(), "ViewProjection"), 1, false, glm::value_ptr(viewproj));
+            glUniformMatrix4fv(prog->getHandle("World"), 1, false, glm::value_ptr(world));
+            glUniformMatrix4fv(prog->getHandle("ViewProjection"), 1, false, glm::value_ptr(viewproj));
             
             if (brushGeom.first)
                 brushGeom.first->draw(Geometry::Primitive_Triangles, 0, brushGeom.second);
         }
+        
+        glDisable(GL_CULL_FACE);
+        
+        drawtext(uir, font, width, height, 10, 50, "Hello World");
         
         glfwSwapBuffers(window);
     }
