@@ -7,3 +7,6 @@
 [submodule "deps/bullet3"]
 	path = deps/bullet3
 	url = git@github.com:bulletphysics/bullet3.git
+[submodule "data"]
+	path = data
+	url = git@github.com:zeux/sandvox-data.git
