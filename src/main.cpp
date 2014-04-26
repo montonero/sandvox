@@ -1492,6 +1492,17 @@ void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int 
     r.flush(f.getTexture());
 }
 
+float getWindowDensity(GLFWwindow* window)
+{
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+
+    return height == 0 ? 1 : float(fbHeight) / height;
+}
+
 int main()
 {
     glfwSetErrorCallback(errorCallback);
@@ -1527,9 +1538,11 @@ int main()
     ProgramManager pm("../../src/shaders", &fw);
     TextureManager tm("../../data", &fw);
     
-    Font font("../../data/Roboto-Regular.ttf", 20);
+    float density = getWindowDensity(window);
     
-    auto chunk = generateWorld(8);
+    Font font("../../data/Roboto-Regular.ttf", 20 * density);
+    
+    auto chunk = generateWorld(2);
     
     auto brushGeom = generateSphere(0.1);
     
@@ -1622,6 +1635,9 @@ int main()
         
         if (chunk.physicsShape)
         {
+            int width, height;
+            glfwGetWindowSize(window, &width, &height);
+        
             double xpos, ypos;
             glfwGetCursorPos(window, &xpos, &ypos);
             
