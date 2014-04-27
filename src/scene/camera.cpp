@@ -20,7 +20,7 @@ void Camera::setView(const vec3& position_, const quat& orientation_)
 void Camera::setProjection(float aspect_, float fov_, float znear_, float zfar_)
 {
     assert(aspect_ > 0);
-    assert(fov_ > 0 && fov_ < glm::pi);
+    assert(fov_ > 0 && fov_ < glm::pi<float>());
     assert(znear_ < zfar_);
     
     aspect = aspect_;

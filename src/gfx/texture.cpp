@@ -85,7 +85,7 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
     
 #ifndef NDEBUG
     unsigned int mipWidth = getMipSide(width, mip);
-    unsigned int mipHeght = getMipSide(height, mip);
+    unsigned int mipHeight = getMipSide(height, mip);
     unsigned int mipDepth = (type == Type_3D) ? getMipSide(depth, mip) : 1;
 #endif
     
