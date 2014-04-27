@@ -8,7 +8,71 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 #include <fstream>
+
+int ft_BakeFontBitmap(const unsigned char *data, int data_size, float pixel_height, unsigned char *pixels, int pw, int ph, int first_char, int num_chars, stbtt_bakedchar *chardata)
+{
+    FT_Library library;
+    FT_Init_FreeType(&library);
+    
+    FT_Face face;
+    FT_New_Memory_Face(library, data, data_size, 0, &face);
+    
+    FT_Size_RequestRec sizereq =
+    {
+        FT_SIZE_REQUEST_TYPE_REAL_DIM,
+        0,
+        int(pixel_height * (1 << 6)),
+        0, 0
+    };
+    
+    FT_Request_Size(face, &sizereq);
+
+    memset(pixels, 0, pw*ph); // background of 0 around pixels
+    
+    int x = 1;
+    int y = 1;
+    int bottom_y = 1;
+    
+    for (int i = 0; i < num_chars; ++i)
+    {
+        int g = FT_Get_Char_Index(face, first_char + i);
+        
+        FT_Load_Glyph(face, g, 0);
+        FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+        
+        FT_GlyphSlot slot = face->glyph;
+        
+        int gw = slot->bitmap.width;
+        int gh = slot->bitmap.rows;
+        
+        if (x + gw + 1 >= pw)
+            y = bottom_y, x = 1; // advance to next row
+        if (y + gh + 1 >= ph) // check if it fits vertically AFTER potentially moving to next row
+            return -i;
+        
+        for (int iy = 0; iy < gh; ++iy)
+        for (int ix = 0; ix < gw; ++ix)
+        pixels[(x+ix)+pw*(y+iy)] = slot->bitmap.buffer[ix+iy*slot->bitmap.pitch];
+        
+        chardata[i].x0 = (stbtt_int16) x;
+        chardata[i].y0 = (stbtt_int16) y;
+        chardata[i].x1 = (stbtt_int16) (x + gw);
+        chardata[i].y1 = (stbtt_int16) (y + gh);
+        chardata[i].xadvance = slot->advance.x >> 6;
+        chardata[i].xoff     = slot->bitmap_left;
+        chardata[i].yoff     = -slot->bitmap_top;
+        
+        x = x + gw + 2;
+        if (y+gh+2 > bottom_y)
+            bottom_y = y+gh+2;
+    }
+    
+    return bottom_y;
+}
 
 Font::Font(const string& path, float size)
 {
@@ -28,9 +92,17 @@ Font::Font(const string& path, float size)
     unique_ptr<unsigned char[]> pixels(new unsigned char[width * height]);
     unique_ptr<stbtt_bakedchar[]> chars(new stbtt_bakedchar[96]);
     
-    unsigned int lines = stbtt_BakeFontBitmap(data.get(), 0, size, pixels.get(), width, height, 32, 96, chars.get());
+    clock_t start = clock();
     
-    printf("Packed into %d lines\n", lines);
+#if 1
+    unsigned int lines = ft_BakeFontBitmap(data.get(), length, size, pixels.get(), width, height, 32, 96, chars.get());
+#else
+    unsigned int lines = stbtt_BakeFontBitmap(data.get(), 0, size, pixels.get(), width, height, 32, 96, chars.get());
+#endif
+
+    clock_t end = clock();
+    
+    printf("Packed into %d lines in %.1f ms\n", lines, (end - start) * 1000.0 / CLOCKS_PER_SEC);
     
     for (int ch = 0; ch < 96; ++ch)
     {

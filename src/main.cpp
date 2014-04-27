@@ -1451,7 +1451,7 @@ static void errorCallback(int error, const char* description)
     fputs(description, stderr);
 }
 
-void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int y, const char* text)
+void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int y, const char* text, unsigned int color)
 {
     float sx = 1.f / width, sy = 1.f / height;
     
@@ -1471,13 +1471,13 @@ void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int 
             float x1 = x0 + g->width;
             float y1 = y0 + g->height;
             
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), ~0u);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u1, g->v0), ~0u);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), ~0u);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u1, g->v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), color);
             
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), ~0u);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), ~0u);
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u0, g->v1), ~0u);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), color);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u0, g->v1), color);
             
             xpos += g->xadvance;
             
@@ -1540,7 +1540,7 @@ int main()
     
     float density = getWindowDensity(window);
     
-    Font font("../../data/Roboto-Regular.ttf", 20 * density);
+    Font font("../../data/Roboto-Regular.ttf", 18 * density);
     
     auto chunk = generateWorld(2);
     
@@ -1702,7 +1702,7 @@ int main()
         
         glDisable(GL_CULL_FACE);
         
-        drawtext(uir, font, width, height, 10, 50, "Hello World");
+        drawtext(uir, font, width, height, 10, 50, "Hello World", ~0u);
         
         glfwSwapBuffers(window);
     }

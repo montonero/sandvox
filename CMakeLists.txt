@@ -23,6 +23,9 @@ add_definitions(-DGLM_FORCE_RADIANS)
 add_subdirectory(deps/bullet3)
 include_directories(deps/bullet3/src)
 
+add_subdirectory(deps/freetype2)
+include_directories(deps/freetype2/include)
+
 include_directories(deps/stb)
 
 include_directories(src)
@@ -32,6 +35,7 @@ file(GLOB_RECURSE SOURCES src/*)
 add_executable(sandvox ${SOURCES})
 
 target_link_libraries(sandvox glfw)
+target_link_libraries(sandvox freetype)
 target_link_libraries(sandvox BulletCollision BulletDynamics LinearMath)
 target_link_libraries(sandvox "-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo")
 
