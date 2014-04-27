@@ -12,4 +12,4 @@
 	url = git@github.com:zeux/sandvox-data.git
 [submodule "deps/freetype2"]
 	path = deps/freetype2
-	url = https://github.com/pyokagan/freetype2
+	url = git@github.com:pyokagan/freetype2.git
