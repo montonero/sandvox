@@ -6,9 +6,8 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <string>
-#include <map>
 #include <set>
+#include <string>
 
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
@@ -31,3 +30,17 @@ struct noncopyable
     noncopyable(const noncopyable&) = delete;
     noncopyable& operator=(const noncopyable&) = delete;
 };
+
+namespace std
+{
+    template <class T, class U> struct hash<pair<T, U>>
+    {
+        size_t operator()(const pair<T, U>& p) const noexcept
+        {
+            size_t f = hash<T>()(p.first);
+            size_t s = hash<U>()(p.second);
+            
+            return s + 0x9e3779b9 + (f << 6) + (f >> 2);
+        }
+    };
+}

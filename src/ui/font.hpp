@@ -24,5 +24,5 @@ private:
 	unique_ptr<Texture> texture;
     
     unordered_map<unsigned int, Glyph> glyphs;
-    map<pair<unsigned int, unsigned int>, int> kerning;
+    unordered_map<pair<unsigned int, unsigned int>, int> kerning;
 };
