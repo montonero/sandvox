@@ -4,8 +4,6 @@
 
 #include <fstream>
 
-#define FONT_USE_FREETYPE 1
-
 #define STBTT_malloc(x,u)  malloc(x)
 #define STBTT_free(x,u)    free(x)
 
@@ -35,7 +33,7 @@ public:
     
     float getScale(float size) override
     {
-        return size / face->units_per_EM;
+        return size / (face->ascender - face->descender);
     }
     
     FontMetrics getMetrics() override
@@ -76,14 +74,14 @@ public:
         {
             FT_Size_RequestRec req =
             {
-                FT_SIZE_REQUEST_TYPE_REAL_DIM,
+                FT_SIZE_REQUEST_TYPE_SCALES,
                 0,
-                int(18 * 2 * (1 << 6)),
+                int(scale * (1 << 22)),
                 0, 0
             };
             
             FT_Request_Size(face, &req);
-            FT_Load_Glyph(face, index, FT_LOAD_RENDER);
+            FT_Load_Glyph(face, index, FT_LOAD_RENDER | FT_LOAD_NO_HINTING);
             
             FT_GlyphSlot glyph = face->glyph;
             
@@ -93,8 +91,7 @@ public:
             vector<unsigned char> pixels((gw + 1) * (gh + 1));
             
             for (unsigned int y = 0; y < gh; ++y)
-                for (unsigned int x = 0; x < gw; ++x)
-                    pixels[x + y * (gw + 1)] = glyph->bitmap.buffer[x + y * glyph->bitmap.pitch];
+                memcpy(&pixels[y * (gw + 1)], &glyph->bitmap.buffer[y * glyph->bitmap.pitch], gw);
             
             return atlas->addBitmap(this, scale, cp, gw + 1, gh + 1, pixels.data());
         }
@@ -128,7 +125,125 @@ private:
     }
     
     FontAtlas* atlas;
+    
     FT_Face face;
+};
+
+class FontSTB: public Font
+{
+public:
+    FontSTB(FontAtlas* atlas, const string& path)
+    : atlas(atlas)
+    {
+        ifstream in(path, ios::in | ios::binary);
+        if (!in)
+            throw runtime_error("Error loading font");
+        
+        in.seekg(0, ios::end);
+        istream::pos_type length = in.tellg();
+        in.seekg(0, ios::beg);
+        
+        if (length <= 0)
+            throw runtime_error("Error loading font");
+        
+        data.reset(new char[length]);
+        
+        in.read(data.get(), length);
+        
+        if (in.gcount() != length)
+            throw runtime_error("Error loading font");
+        
+        if (!stbtt_InitFont(&font, reinterpret_cast<unsigned char*>(data.get()), 0))
+            throw runtime_error("Error loading font");
+    }
+    
+    ~FontSTB()
+    {
+    }
+    
+    float getScale(float size) override
+    {
+        return stbtt_ScaleForPixelHeight(&font, size);
+    }
+    
+    FontMetrics getMetrics() override
+    {
+        int ascent, descent, linegap;
+        stbtt_GetFontVMetrics(&font, &ascent, &descent, &linegap);
+ 
+        FontMetrics result;
+        
+        result.ascender = ascent;
+        result.descender = descent;
+        result.height = ascent - descent + linegap;
+    
+        return result;
+    }
+    
+    optional<GlyphMetrics> getGlyphMetrics(unsigned int cp) override
+    {
+        unsigned int index = stbtt_FindGlyphIndex(&font, cp);
+ 
+        if (index)
+        {
+            int x0, y0, x1, y1;
+            if (!stbtt_GetGlyphBox(&font, index, &x0, &y0, &x1, &y1))
+                x0 = y0 = x1 = y1 = 0;
+            
+            int advance, leftSideBearing;
+            stbtt_GetGlyphHMetrics(&font, index, &advance, &leftSideBearing);
+            
+            return make_optional(GlyphMetrics {float(x0), float(y1), float(advance)});
+        }
+        
+        return {};
+    }
+    
+    optional<GlyphBitmap> getGlyphBitmap(float scale, unsigned int cp) override
+    {
+        if (optional<GlyphBitmap> cached = atlas->getBitmap(this, scale, cp))
+            return cached;
+        
+        unsigned int index = stbtt_FindGlyphIndex(&font, cp);
+        
+        if (index)
+        {
+            int x0, y0, x1, y1;
+            stbtt_GetGlyphBitmapBox(&font, index, scale, scale, &x0, &y0, &x1, &y1);
+            
+            unsigned int gw = x1 - x0;
+            unsigned int gh = y1 - y0;
+            
+            vector<unsigned char> pixels((gw + 1) * (gh + 1));
+            
+            stbtt_MakeGlyphBitmap(&font, pixels.data(), gw, gh, gw + 1, scale, scale, index);
+            
+            return atlas->addBitmap(this, scale, cp, gw + 1, gh + 1, pixels.data());
+        }
+        
+        return {};
+    }
+    
+    float getKerning(unsigned int cp1, unsigned int cp2) override
+    {
+        if (!font.kern) return 0;
+        
+        unsigned int index1 = stbtt_FindGlyphIndex(&font, cp1);
+        unsigned int index2 = stbtt_FindGlyphIndex(&font, cp2);
+        
+        if (index1 && index2)
+        {
+            return stbtt_GetGlyphKernAdvance(&font, index1, index2);
+        }
+        
+        return 0;
+    }
+    
+private:
+    FontAtlas* atlas;
+    
+    stbtt_fontinfo font;
+    unique_ptr<char[]> data;
 };
 
 Font::~Font()
@@ -210,9 +325,9 @@ optional<pair<unsigned int, unsigned int>> FontAtlas::layoutBitmap(unsigned int 
     // Try to fit in the next line
     if (width <= texture->getWidth() && layoutNextY + height <= texture->getHeight())
     {
-        auto result = make_pair(0u, layoutY);
+        auto result = make_pair(0u, layoutNextY);
         
-        layoutX = 0;
+        layoutX = width;
         layoutY = layoutNextY;
         layoutNextY = layoutY + height;
         
@@ -232,15 +347,14 @@ FontLibrary::~FontLibrary()
 {
 }
 
-void FontLibrary::addFont(const string& name, const string& path)
+void FontLibrary::addFont(const string& name, const string& path, bool freetype)
 {
     assert(fonts.count(name) == 0);
     
-#if FONT_USE_FREETYPE
-    fonts[name] = make_unique<FontFT>(atlas.get(), path);
-#else
-    fonts[name] = make_unique<FontSTBTT>(atlas.get(), path);
-#endif
+    if (freetype)
+        fonts[name] = make_unique<FontFT>(atlas.get(), path);
+    else
+        fonts[name] = make_unique<FontSTB>(atlas.get(), path);
 }
 
 Font* FontLibrary::getFont(const string& name)

@@ -80,7 +80,7 @@ public:
     FontLibrary(unsigned int atlasWidth, unsigned int atlasHeight);
     ~FontLibrary();
     
-    void addFont(const string& name, const string& path);
+    void addFont(const string& name, const string& path, bool freetype);
     Font* getFont(const string& name);
     
     Texture* getTexture() const { return atlas->getTexture(); }
