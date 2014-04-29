@@ -5,24 +5,88 @@ class Texture;
 class Font
 {
 public:
-	struct Glyph
-	{
-        float u0, v0, u1, v1;
-        float width, height;
-        float xoffset, yoffset, xadvance;
-	};
+    struct FontMetrics
+    {
+        float ascender;
+        float descender;
+        float height;
+    };
     
-	Font(const string& path, float size);
-	~Font();
+    struct GlyphMetrics
+    {
+        float bearingX;
+        float bearingY;
+        float advance;
+    };
     
-    const Glyph* getGlyph(unsigned int id) const;
-    int getKerning(unsigned int id1, unsigned int id2) const;
+    struct GlyphBitmap
+    {
+        unsigned short x, y, w, h;
+    };
+    
+    virtual ~Font();
+    
+    virtual float getScale(float size) = 0;
+    
+    virtual FontMetrics getMetrics() = 0;
+    
+    virtual optional<GlyphMetrics> getGlyphMetrics(unsigned int cp) = 0;
+    virtual optional<GlyphBitmap> getGlyphBitmap(float scale, unsigned int cp) = 0;
+    
+    virtual float getKerning(unsigned int cp1, unsigned int cp2) = 0;
+};
+
+class FontAtlas
+{
+public:
+    FontAtlas(unsigned int atlasWidth, unsigned int atlasHeight);
+    ~FontAtlas();
+    
+    optional<Font::GlyphBitmap> getBitmap(Font* font, float scale, unsigned int cp);
+    optional<Font::GlyphBitmap> addBitmap(Font* font, float scale, unsigned int cp, unsigned int width, unsigned int height, const unsigned char* pixels);
     
     Texture* getTexture() const { return texture.get(); }
 
 private:
-	unique_ptr<Texture> texture;
+    struct GlyphKey
+    {
+        Font* font;
+        float scale;
+        unsigned int cp;
+        
+        bool operator==(const GlyphKey& other) const;
+    };
     
-    unordered_map<unsigned int, Glyph> glyphs;
-    unordered_map<pair<unsigned int, unsigned int>, int> kerning;
+    struct GlyphKeyHash
+    {
+        size_t operator()(const GlyphKey& key) const;
+    };
+    
+    optional<pair<unsigned int, unsigned int>> addBitmapData(unsigned int width, unsigned int height, const unsigned char* pixels);
+    optional<pair<unsigned int, unsigned int>> layoutBitmap(unsigned int width, unsigned int height);
+    
+    unique_ptr<Texture> texture;
+    
+    unordered_map<GlyphKey, Font::GlyphBitmap, GlyphKeyHash> glyphs;
+    
+    unsigned int layoutX;
+    unsigned int layoutY;
+    unsigned int layoutNextY;
+};
+
+class FontLibrary
+{
+public:
+    FontLibrary(unsigned int atlasWidth, unsigned int atlasHeight);
+    ~FontLibrary();
+    
+    void addFont(const string& name, const string& path);
+    Font* getFont(const string& name);
+    
+    Texture* getTexture() const { return atlas->getTexture(); }
+    
+private:
+    unique_ptr<FontAtlas> atlas;
+    
+    unordered_map<string, unique_ptr<Font>> fonts;
 };

@@ -8,6 +8,7 @@
 #include "gfx/program.hpp"
 #include "gfx/geometry.hpp"
 #include "gfx/texture.hpp"
+#include "gfx/image.hpp"
 
 #include "scene/camera.hpp"
 
@@ -1451,35 +1452,49 @@ static void errorCallback(int error, const char* description)
     fputs(description, stderr);
 }
 
-void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int y, const char* text, unsigned int color)
+void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int height, int x, int y, float size, const char* text, unsigned int color)
 {
-    float sx = 1.f / width, sy = 1.f / height;
+    Font* f = fl.getFont(font);
     
-    float xpos = x;
-    float ypos = y;
+    float sx = 1.f / width, sy = 1.f / height;
+    float su = 1.f / fl.getTexture()->getWidth();
+    float sv = 1.f / fl.getTexture()->getHeight();
+    
+    float xpos = roundf(x);
+    float ypos = roundf(y);
+    
+    float scale = f->getScale(size);
     
     unsigned int lastch = 0;
     
     for (const char* s = text; *s; ++s)
     {
-        if (const Font::Glyph* g = f.getGlyph(*s))
+        auto metrics = f->getGlyphMetrics(*s);
+        auto bitmap = f->getGlyphBitmap(scale, *s);
+        
+        if (metrics && bitmap)
         {
-            xpos += f.getKerning(lastch, *s);
+            xpos += roundf(f->getKerning(lastch, *s) * scale);
             
-            float x0 = floorf(xpos + g->xoffset + 0.5f);
-            float y0 = floorf(ypos + g->yoffset + 0.5f);
-            float x1 = x0 + g->width;
-            float y1 = y0 + g->height;
+            float x0 = roundf(xpos + metrics->bearingX * scale);
+            float y0 = roundf(ypos - metrics->bearingY * scale);
+            float x1 = x0 + bitmap->w;
+            float y1 = y0 + bitmap->h;
             
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u1, g->v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), color);
+            float u0 = su * bitmap->x;
+            float u1 = su * (bitmap->x + bitmap->w);
+            float v0 = sv * bitmap->y;
+            float v1 = sv * (bitmap->y + bitmap->h);
             
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(g->u0, g->v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u1, g->v1), color);
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(g->u0, g->v1), color);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u0, v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u1, v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u1, v1), color);
             
-            xpos += g->xadvance;
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u0, v0), color);
+            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u1, v1), color);
+            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u0, v1), color);
+            
+            xpos += roundf(metrics->advance * scale);
             
             lastch = *s;
         }
@@ -1489,7 +1504,7 @@ void drawtext(ui::Renderer& r, const Font& f, int width, int height, int x, int 
         }
     }
     
-    r.flush(f.getTexture());
+    r.flush(fl.getTexture());
 }
 
 float getWindowDensity(GLFWwindow* window)
@@ -1501,6 +1516,15 @@ float getWindowDensity(GLFWwindow* window)
     glfwGetWindowSize(window, &width, &height);
 
     return height == 0 ? 1 : float(fbHeight) / height;
+}
+
+void dumpTexture(Texture* tex, const string& path)
+{
+    Image image(Texture::Type_2D, tex->getFormat(), tex->getWidth(), tex->getHeight(), 1, 1);
+    
+    tex->download(0, 0, 0, image.getData(0, 0, 0), Texture::getImageSize(tex->getFormat(), tex->getWidth(), tex->getHeight()));
+    
+    image.saveToPNG(path);
 }
 
 int main()
@@ -1538,9 +1562,8 @@ int main()
     ProgramManager pm("../../src/shaders", &fw);
     TextureManager tm("../../data", &fw);
     
-    float density = getWindowDensity(window);
-    
-    Font font("../../data/Roboto-Regular.ttf", 18 * density);
+    FontLibrary fonts(512, 512);
+    fonts.addFont("sans", "../../data/Roboto-Regular.ttf");
     
     auto chunk = generateWorld(2);
     
@@ -1626,6 +1649,8 @@ int main()
     
         fw.processChanges();
         
+        float density = getWindowDensity(window);
+    
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
         
@@ -1702,10 +1727,12 @@ int main()
         
         glDisable(GL_CULL_FACE);
         
-        drawtext(uir, font, width, height, 10, 50, "Hello World", ~0u);
+        drawtext(uir, fonts, "sans", width, height, 10, 50, 18 * density, "Hello World", ~0u);
         
         glfwSwapBuffers(window);
     }
+    
+    dumpTexture(fonts.getTexture(), "../../fontatlas.png");
     
     glfwDestroyWindow(window);
     
