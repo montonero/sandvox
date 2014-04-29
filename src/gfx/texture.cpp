@@ -131,6 +131,40 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
 	glBindTexture(target, 0);
 }
 
+void Texture::download(unsigned int index, unsigned int face, unsigned int mip, void* data, unsigned int size)
+{
+    assert(index < ((type == Type_Array2D || type == Type_ArrayCube) ? depth : 1));
+    assert(face < ((type == Type_Cube || type == Type_ArrayCube) ? 6 : 1));
+    assert(mip < mipLevels);
+    
+    unsigned int mipWidth = getMipSide(width, mip);
+    unsigned int mipHeight = getMipSide(height, mip);
+    unsigned int mipDepth = (type == Type_3D) ? getMipSide(depth, mip) : 1;
+    
+    assert(size == getImageSize(format, mipWidth, mipHeight) * mipDepth);
+    
+    GLenum target = kTextureTarget[type];
+    GLenum faceTarget = (type == Type_Cube || type == Type_ArrayCube) ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + face : target;
+    
+	const TextureFormatGL& desc = kTextureFormat[format];
+    
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(target, id);
+    
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    
+    if (isFormatCompressed(format))
+    {
+        glGetCompressedTexImage(faceTarget, mip, data);
+    }
+    else
+    {
+        glGetTexImage(faceTarget, mip, desc.dataFormat, desc.dataType, data);
+    }
+    
+	glBindTexture(target, 0);
+}
+
 void Texture::bind(unsigned int stage)
 {
     GLenum target = kTextureTarget[type];

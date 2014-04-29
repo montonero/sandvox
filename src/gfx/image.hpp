@@ -10,6 +10,8 @@ public:
 	Image(Texture::Type type, Texture::Format format, unsigned int width, unsigned int height, unsigned int depth, unsigned int mipLevels);
     
     unsigned char* getData(unsigned int index, unsigned int face, unsigned int mip);
+    
+    void saveToPNG(const string& path);
  
     Texture::Type getType() const { return type; }
     Texture::Format getFormat() const { return format; }

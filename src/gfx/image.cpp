@@ -1,6 +1,8 @@
 #include "image.hpp"
 
 #include "stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 #include <istream>
@@ -166,7 +168,17 @@ unsigned char* Image::getData(unsigned int index, unsigned int face, unsigned in
     assert(slot < data.size());
     return data[slot].get();
 }
+
+void Image::saveToPNG(const string& path)
+{
+    assert(type == Texture::Type_2D);
+    assert(format == Texture::Format_R8 || format == Texture::Format_RGBA8);
     
+    int comp = (format == Texture::Format_R8) ? 1 : 4;
+    
+    stbi_write_png(path.c_str(), width, height, comp, getData(0, 0, 0), width * comp);
+}
+
 unsigned int Image::getFaces() const
 {
     return (type == Texture::Type_Cube || type == Texture::Type_ArrayCube) ? 6 : 1;

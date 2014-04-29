@@ -46,6 +46,7 @@ public:
     ~Texture();
 
     void upload(unsigned int index, unsigned int face, unsigned int mip, const TextureRegion& region, const void* data, unsigned int size);
+    void download(unsigned int index, unsigned int face, unsigned int mip, void* data, unsigned int size);
     
     void bind(unsigned int stage);
 
