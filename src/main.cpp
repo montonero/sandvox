@@ -1451,6 +1451,44 @@ static void errorCallback(int error, const char* description)
 {
     fputs(description, stderr);
 }
+// Copyright (c) 2008-2010 Bjoern Hoehrmann <bjoern@hoehrmann.de>
+// See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
+
+#define UTF8_ACCEPT 0
+#define UTF8_REJECT 12
+
+static const uint8_t utf8d[] = {
+  // The first part of the table maps bytes to character classes that
+  // to reduce the size of the transition table and create bitmasks.
+   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,
+   7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+   8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8,
+
+  // The second part is a transition table that maps a combination
+  // of a state of the automaton and a character class to a state.
+   0,12,24,36,60,96,84,12,12,12,48,72, 12,12,12,12,12,12,12,12,12,12,12,12,
+  12, 0,12,12,12,12,12, 0,12, 0,12,12, 12,24,12,12,12,12,12,24,12,24,12,12,
+  12,12,12,12,12,12,12,24,12,12,12,12, 12,24,12,12,12,12,12,12,12,24,12,12,
+  12,12,12,12,12,12,12,36,12,36,12,12, 12,36,12,12,12,12,12,36,12,36,12,12,
+  12,36,12,12,12,12,12,12,12,12,12,12, 
+};
+
+uint32_t inline
+decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
+  uint32_t type = utf8d[byte];
+
+  *codep = (*state != UTF8_ACCEPT) ?
+    (byte & 0x3fu) | (*codep << 6) :
+    (0xff >> type) & (byte);
+
+  *state = utf8d[256 + *state + type];
+  return *state;
+}
 
 void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int height, int x, int y, float size, const char* text, unsigned int color)
 {
@@ -1467,17 +1505,23 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
     
     unsigned int lastch = 0;
     
+    uint32_t utfstate = 0;
+    uint32_t utfcode = 0;
+    
     for (const char* s = text; *s; ++s)
     {
-        auto metrics = f->getGlyphMetrics(*s);
-        auto bitmap = f->getGlyphBitmap(scale, *s);
+        if (decode(&utfstate, &utfcode, static_cast<unsigned char>(*s)) != UTF8_ACCEPT)
+            continue;
+        
+        auto metrics = f->getGlyphMetrics(utfcode);
+        auto bitmap = f->getGlyphBitmap(scale, utfcode);
         
         if (metrics && bitmap)
         {
-            xpos += roundf(f->getKerning(lastch, *s) * scale);
+            xpos += roundf(f->getKerning(lastch, utfcode) * scale);
             
-            float x0 = roundf(xpos + metrics->bearingX * scale);
-            float y0 = roundf(ypos - metrics->bearingY * scale);
+            float x0 = xpos + floorf(metrics->bearingX * scale);
+            float y0 = ypos - ceilf(metrics->bearingY * scale);
             float x1 = x0 + bitmap->w;
             float y1 = y0 + bitmap->h;
             
@@ -1496,15 +1540,13 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
             
             xpos += roundf(metrics->advance * scale);
             
-            lastch = *s;
+            lastch = utfcode;
         }
         else
         {
             lastch = 0;
         }
     }
-    
-    r.flush(fl.getTexture());
 }
 
 float getWindowDensity(GLFWwindow* window)
@@ -1562,8 +1604,12 @@ int main()
     ProgramManager pm("../../src/shaders", &fw);
     TextureManager tm("../../data", &fw);
     
+    // const char* fontpath = "../../data/Roboto-Regular.ttf";
+    const char* fontpath = "/Library/Fonts/Arial Unicode.ttf";
+    
     FontLibrary fonts(512, 512);
-    fonts.addFont("sans", "../../data/Roboto-Regular.ttf");
+    fonts.addFont("sans-ft", fontpath, true);
+    fonts.addFont("sans-stb", fontpath, false);
     
     auto chunk = generateWorld(2);
     
@@ -1598,7 +1644,7 @@ int main()
         dynamicsWorld.addRigidBody(chunkBody);
     }
     
-    ui::Renderer uir(1024, pm.get("ui-vs", "ui-fs"));
+    ui::Renderer uir(65536, pm.get("ui-vs", "ui-fs"));
     
     while (!glfwWindowShouldClose(window))
     {
@@ -1726,8 +1772,32 @@ int main()
         }
         
         glDisable(GL_CULL_FACE);
+        glDisable(GL_DEPTH_TEST);
         
-        drawtext(uir, fonts, "sans", width, height, 10, 50, 18 * density, "Hello World", ~0u);
+        const char* text1 = "Victor jagt zwölf Boxkämpfer quer über den großen Sylter Deich";
+        const char* text2 = "Ταχίστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός";
+        const char* text3 = "דג סקרן שט בים מאוכזב ולפתע מצא חברה";
+        const char* text4 = "田居に出で 菜摘むわれをぞ 君召すと 求食り追ひゆく 山城の 打酔へる子ら 藻葉干せよ え舟繋けぬ";
+ 
+        clock_t start = clock();
+        
+        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 30 * density, 18 * density, text1, ~0u);
+        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 100 * density, 24 * density, text2, ~0u);
+        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 200 * density, 28 * density, text3, ~0u);
+        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 350 * density, 36 * density, text4, ~0u);
+        
+        clock_t middle = clock();
+        
+        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 55 * density, 18 * density, text1, ~0u);
+        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 130 * density, 24 * density, text2, ~0u);
+        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 240 * density, 28 * density, text3, ~0u);
+        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 400 * density, 36 * density, text4, ~0u);
+        
+        clock_t end = clock();
+        
+        printf("Rendering fonts took %.2f ms (ft) / %.2f ms (stb)\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
+        
+        uir.flush(fonts.getTexture());
         
         glfwSwapBuffers(window);
     }
