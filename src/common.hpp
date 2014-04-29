@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <functional>
+#include <optional>
 
 #include <vector>
 #include <unordered_map>
@@ -31,16 +32,23 @@ struct noncopyable
     noncopyable& operator=(const noncopyable&) = delete;
 };
 
+template <typename T> inline size_t hash_value(const T& v)
+{
+    return hash<T>()(v);
+}
+
+inline size_t hash_combine(size_t a, size_t b)
+{
+    return b + 0x9e3779b9 + (a << 6) + (a >> 2);
+}
+
 namespace std
 {
-    template <class T, class U> struct hash<pair<T, U>>
+    template <typename T, typename U> struct hash<pair<T, U>>
     {
         size_t operator()(const pair<T, U>& p) const noexcept
         {
-            size_t f = hash<T>()(p.first);
-            size_t s = hash<U>()(p.second);
-            
-            return s + 0x9e3779b9 + (f << 6) + (f >> 2);
+            return hash_combine(hash_value(p.first), hash_value(p.second));
         }
     };
 }
