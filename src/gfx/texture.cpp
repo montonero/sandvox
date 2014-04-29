@@ -83,14 +83,12 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
     assert(face < ((type == Type_Cube || type == Type_ArrayCube) ? 6 : 1));
     assert(mip < mipLevels);
     
-#ifndef NDEBUG
     unsigned int mipWidth = getMipSide(width, mip);
     unsigned int mipHeight = getMipSide(height, mip);
     unsigned int mipDepth = (type == Type_3D) ? getMipSide(depth, mip) : 1;
-#endif
     
     assert(region.x + region.width <= mipWidth && region.y + region.height <= mipHeight && region.z + region.depth <= mipDepth);
-    assert(size == getImageSize(format, mipWidth, mipHeight) * mipDepth);
+    assert(size == getImageSize(format, region.width, region.height) * region.depth);
     
     GLenum target = kTextureTarget[type];
     GLenum faceTarget = (type == Type_Cube || type == Type_ArrayCube) ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + face : target;
@@ -99,6 +97,8 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
     
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(target, id);
+    
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     
     if (isFormatCompressed(format))
     {
