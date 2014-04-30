@@ -1810,8 +1810,8 @@ int main()
         
         printf("Rendering fonts took %.2f ms (ft) / %.2f ms (stb)\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
         
-        float offx = 256.f / width * 2;
-        float offy = 256.f / height * 2;
+        float offx = density * 256.f / width * 2;
+        float offy = density * 256.f / height * 2;
         
         uir.push(vec2(1.f - offx, 1.f), vec2(0.f, 0.f), ~0u);
         uir.push(vec2(1.f, 1.f), vec2(1.f, 0.f), ~0u);
@@ -1821,6 +1821,7 @@ int main()
         uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
         uir.push(vec2(1.f - offx, 1.f - offy), vec2(0.f, 1.f), ~0u);
         
+        fonts.flush();
         uir.flush(fonts.getTexture());
         
         glfwSwapBuffers(window);

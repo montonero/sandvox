@@ -230,9 +230,11 @@ size_t FontAtlas::GlyphKeyHash::operator()(const GlyphKey& key) const
 }
 
 FontAtlas::FontAtlas(unsigned int atlasWidth, unsigned int atlasHeight)
-: layoutX(0)
-, layoutY(0)
-, layoutNextY(0)
+: layoutBegin(0)
+, layoutEnd(atlasHeight)
+, layoutLineBegin(0)
+, layoutLineEnd(0)
+, layoutPosition(0)
 {
     texture = make_unique<Texture>(Texture::Type_2D, Texture::Format_R8, atlasWidth, atlasHeight, 1, 1);
 }
@@ -243,22 +245,31 @@ FontAtlas::~FontAtlas()
     
 optional<Font::GlyphBitmap> FontAtlas::getBitmap(Font* font, float size, unsigned int cp)
 {
-    auto it = glyphs.find({ font, size, cp });
+    GlyphKey key = { font, size, cp };
+    auto it = glyphs.find(key);
     
     return (it == glyphs.end()) ? optional<Font::GlyphBitmap>() : make_optional(it->second);
 }
 
 optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float size, unsigned int cp, const Font::GlyphMetrics& metrics, unsigned int width, unsigned int height, const unsigned char* pixels)
 {
-    assert(glyphs.count({ font, size, cp }) == 0);
+    GlyphKey key = { font, size, cp };
+        
+    assert(glyphs.count(key) == 0);
     
-    auto result = addBitmapData(width, height, pixels);
+    auto result = layoutBitmap(width, height);
     
     if (result)
     {
-        Font::GlyphBitmap bitmap = { metrics, static_cast<short>(result->first), static_cast<short>(result->second), static_cast<short>(width), static_cast<short>(height) };
+        unsigned int x = result->first;
+        unsigned int y = result->second % texture->getHeight();
         
-        glyphs[{ font, size, cp }] = bitmap;
+        texture->upload(0, 0, 0, TextureRegion { x, y, 0, width, height, 1 }, pixels, width * height);
+        
+        Font::GlyphBitmap bitmap = { metrics, static_cast<short>(x), static_cast<short>(y), static_cast<short>(width), static_cast<short>(height) };
+        
+        glyphs[key] = bitmap;
+        glyphsY.insert(make_pair(result->second, key));
         
         return make_optional(bitmap);
     }
@@ -266,41 +277,90 @@ optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float size, unsigne
     return {};
 }
 
-optional<pair<unsigned int, unsigned int>> FontAtlas::addBitmapData(unsigned int width, unsigned int height, const unsigned char* pixels)
+void FontAtlas::flush()
 {
-    auto result = layoutBitmap(width, height);
+    assert(layoutBegin < layoutEnd);
+    assert(layoutLineBegin <= layoutLineEnd);
+    assert(layoutLineBegin >= layoutBegin && layoutLineEnd <= layoutEnd);
+    assert(layoutEnd - layoutBegin <= texture->getHeight());
     
-    if (result)
+    // Let's figure out how much space we have left and make sure we have at least 1/3 of the texture
+    unsigned int layoutHeight = layoutEnd - layoutLineEnd;
+    unsigned int layoutDesiredHeight = texture->getHeight() / 3;
+    
+    if (layoutHeight < layoutDesiredHeight)
     {
-        texture->upload(0, 0, 0, TextureRegion { result->first, result->second, 0, width, height, 1 }, pixels, width * height);
-    }
+        unsigned int difference = layoutDesiredHeight - layoutHeight;
+        
+        auto begin = glyphsY.lower_bound(layoutBegin);
+        auto end = glyphsY.upper_bound(layoutBegin + difference);
     
-    return result;
+        for (auto it = begin; it != end; ++it)
+            glyphs.erase(it->second);
+        
+        glyphsY.erase(begin, end);
+        
+        vector<unsigned char> empty(texture->getWidth());
+        
+        for (unsigned int i = 0; i < difference; ++i)
+        {
+            unsigned int y = (layoutBegin + i) % texture->getHeight();
+            
+            texture->upload(0, 0, 0, TextureRegion { 0, y, 0, texture->getWidth(), 1, 1 }, empty.data(), empty.size());
+        }
+        
+        layoutBegin += difference;
+        layoutEnd += difference;
+    }
 }
 
-optional<pair<unsigned int, unsigned int>> FontAtlas::layoutBitmap(unsigned int width, unsigned int height)
+static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
+{
+    return start / wrap == (start + size - 1) / wrap;
+}
+
+optional<pair<unsigned int, unsigned long long>> FontAtlas::layoutBitmap(unsigned int width, unsigned int height)
 {
     // Try to fit in the same line
-    if (layoutX + width <= texture->getWidth() && layoutY + height <= texture->getHeight())
+    if (layoutPosition + width <= texture->getWidth() && layoutLineBegin + height <= layoutEnd && isRangeValid(layoutLineBegin, height, texture->getHeight()))
     {
-        auto result = make_pair(layoutX, layoutY);
+        auto result = make_pair(layoutPosition, layoutLineBegin);
         
-        layoutX += width;
-        layoutNextY = max(layoutNextY, layoutY + height);
+        layoutPosition += width;
+        layoutLineEnd = max(layoutLineEnd, layoutLineBegin + height);
         
         return make_optional(result);
     }
     
     // Try to fit in the next line
-    if (width <= texture->getWidth() && layoutNextY + height <= texture->getHeight())
+    if (width <= texture->getWidth() && layoutLineEnd + height <= layoutEnd)
     {
-        auto result = make_pair(0u, layoutNextY);
-        
-        layoutX = width;
-        layoutY = layoutNextY;
-        layoutNextY = layoutY + height;
-        
-        return make_optional(result);
+        if (isRangeValid(layoutLineEnd, height, texture->getHeight()))
+        {
+            auto result = make_pair(0u, layoutLineEnd);
+            
+            layoutPosition = width;
+            layoutLineBegin = layoutLineEnd;
+            layoutLineEnd = layoutLineEnd + height;
+            
+            return make_optional(result);
+        }
+        else
+        {
+            // Try to fit with a wraparound
+            unsigned long long lineWrap = (layoutLineEnd + height) / texture->getHeight() * texture->getHeight();
+            
+            if (lineWrap + height <= layoutEnd)
+            {
+                auto result = make_pair(0u, lineWrap);
+                
+                layoutPosition = width;
+                layoutLineBegin = lineWrap;
+                layoutLineEnd = lineWrap + height;
+                
+                return make_optional(result);
+            }
+        }
     }
     
     // Fail
@@ -331,4 +391,9 @@ Font* FontLibrary::getFont(const string& name)
     auto it = fonts.find(name);
     
     return (it == fonts.end()) ? nullptr : it->second.get();
+}
+
+void FontLibrary::flush()
+{
+    atlas->flush();
 }

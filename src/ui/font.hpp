@@ -41,6 +41,8 @@ public:
     optional<Font::GlyphBitmap> getBitmap(Font* font, float size, unsigned int cp);
     optional<Font::GlyphBitmap> addBitmap(Font* font, float size, unsigned int cp, const Font::GlyphMetrics& metrics, unsigned int width, unsigned int height, const unsigned char* pixels);
     
+    void flush();
+    
     Texture* getTexture() const { return texture.get(); }
 
 private:
@@ -58,16 +60,20 @@ private:
         size_t operator()(const GlyphKey& key) const;
     };
     
-    optional<pair<unsigned int, unsigned int>> addBitmapData(unsigned int width, unsigned int height, const unsigned char* pixels);
-    optional<pair<unsigned int, unsigned int>> layoutBitmap(unsigned int width, unsigned int height);
+    optional<pair<unsigned int, unsigned long long>> layoutBitmap(unsigned int width, unsigned int height);
     
     unique_ptr<Texture> texture;
     
     unordered_map<GlyphKey, Font::GlyphBitmap, GlyphKeyHash> glyphs;
+    multimap<unsigned long long, GlyphKey> glyphsY;
     
-    unsigned int layoutX;
-    unsigned int layoutY;
-    unsigned int layoutNextY;
+    unsigned long long layoutBegin;
+    unsigned long long layoutEnd;
+    
+    unsigned long long layoutLineBegin;
+    unsigned long long layoutLineEnd;
+    
+    unsigned int layoutPosition;
 };
 
 class FontLibrary
@@ -78,6 +84,8 @@ public:
     
     void addFont(const string& name, const string& path, bool freetype);
     Font* getFont(const string& name);
+    
+    void flush();
     
     Texture* getTexture() const { return atlas->getTexture(); }
     
