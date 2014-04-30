@@ -60,20 +60,32 @@ private:
         size_t operator()(const GlyphKey& key) const;
     };
     
-    optional<pair<unsigned int, unsigned long long>> layoutBitmap(unsigned int width, unsigned int height);
+    struct Layout
+    {
+        unsigned int atlasWidth;
+        unsigned int atlasHeight;
+        
+        unsigned long long areaBegin;
+        unsigned long long areaEnd;
+        
+        unsigned long long lineBegin;
+        unsigned long long lineEnd;
+        
+        unsigned int position;
+        
+        Layout(unsigned int atlasWidth, unsigned int atlasHeight);
+        
+        optional<pair<unsigned int, unsigned long long>> addRect(unsigned int width, unsigned int height);
+        
+        optional<pair<unsigned long long, unsigned long long>> growFreeArea(unsigned int desiredHeight);
+    };
     
     unique_ptr<Texture> texture;
     
     unordered_map<GlyphKey, Font::GlyphBitmap, GlyphKeyHash> glyphs;
     multimap<unsigned long long, GlyphKey> glyphsY;
     
-    unsigned long long layoutBegin;
-    unsigned long long layoutEnd;
-    
-    unsigned long long layoutLineBegin;
-    unsigned long long layoutLineEnd;
-    
-    unsigned int layoutPosition;
+    Layout layout;
 };
 
 class FontLibrary

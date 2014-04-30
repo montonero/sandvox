@@ -229,12 +229,97 @@ size_t FontAtlas::GlyphKeyHash::operator()(const GlyphKey& key) const
     return hash_combine(hash_value(key.font), hash_combine(hash_value(key.size), hash_value(key.cp)));
 }
 
+FontAtlas::Layout::Layout(unsigned int atlasWidth, unsigned int atlasHeight)
+: atlasWidth(atlasWidth)
+, atlasHeight(atlasHeight)
+, areaBegin(0)
+, areaEnd(atlasHeight)
+, lineBegin(0)
+, lineEnd(0)
+, position(0)
+{
+}
+
+static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
+{
+    return start / wrap == (start + size - 1) / wrap;
+}
+
+optional<pair<unsigned int, unsigned long long>> FontAtlas::Layout::addRect(unsigned int width, unsigned int height)
+{
+    // Try to fit in the same line
+    if (position + width <= atlasWidth && lineBegin + height <= areaEnd && isRangeValid(lineBegin, height, atlasHeight))
+    {
+        auto result = make_pair(position, lineBegin);
+        
+        position += width;
+        lineEnd = max(lineEnd, lineBegin + height);
+        
+        return make_optional(result);
+    }
+    
+    // Try to fit in the next line
+    if (width <= atlasWidth && lineEnd + height <= areaEnd)
+    {
+        if (isRangeValid(lineEnd, height, atlasHeight))
+        {
+            auto result = make_pair(0u, lineEnd);
+            
+            position = width;
+            lineBegin = lineEnd;
+            lineEnd = lineEnd + height;
+            
+            return make_optional(result);
+        }
+        else
+        {
+            // Try to fit with a wraparound
+            unsigned long long lineWrap = (lineEnd + height) / atlasHeight * atlasHeight;
+            
+            if (lineWrap + height <= areaEnd)
+            {
+                auto result = make_pair(0u, lineWrap);
+                
+                position = width;
+                lineBegin = lineWrap;
+                lineEnd = lineWrap + height;
+                
+                return make_optional(result);
+            }
+        }
+    }
+    
+    // Fail
+    return {};
+}
+
+optional<pair<unsigned long long, unsigned long long>> FontAtlas::Layout::growFreeArea(unsigned int desiredHeight)
+{
+    assert(areaBegin < areaEnd);
+    assert(lineBegin <= lineEnd);
+    assert(lineBegin >= areaBegin && lineEnd <= areaEnd);
+    assert(areaEnd - areaBegin <= atlasHeight);
+    
+    unsigned int freeHeight = areaEnd - lineEnd;
+    
+    if (freeHeight < desiredHeight)
+    {
+        unsigned int difference = desiredHeight - freeHeight;
+        
+        areaBegin += difference;
+        areaEnd += difference;
+        
+        // Move the layout state to make sure rectangles fit within the allowed area
+        lineBegin = max(lineBegin, areaBegin);
+        
+        return make_optional(make_pair(areaBegin - difference, areaBegin));
+    }
+    
+    return {};
+}
+
 FontAtlas::FontAtlas(unsigned int atlasWidth, unsigned int atlasHeight)
-: layoutBegin(0)
-, layoutEnd(atlasHeight)
-, layoutLineBegin(0)
-, layoutLineEnd(0)
-, layoutPosition(0)
+: layout(atlasWidth, atlasHeight)
 {
     texture = make_unique<Texture>(Texture::Type_2D, Texture::Format_R8, atlasWidth, atlasHeight, 1, 1);
 }
@@ -257,7 +342,7 @@ optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float size, unsigne
         
     assert(glyphs.count(key) == 0);
     
-    auto result = layoutBitmap(width, height);
+    auto result = layout.addRect(width, height);
     
     if (result)
     {
@@ -279,86 +364,17 @@ optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float size, unsigne
 
 void FontAtlas::flush()
 {
-    assert(layoutBegin < layoutEnd);
-    assert(layoutLineBegin <= layoutLineEnd);
-    assert(layoutLineBegin >= layoutBegin && layoutLineEnd <= layoutEnd);
-    assert(layoutEnd - layoutBegin <= texture->getHeight());
-    
-    // Let's figure out how much space we have left and make sure we have at least 1/3 of the texture
-    unsigned int layoutHeight = layoutEnd - layoutLineEnd;
-    unsigned int layoutDesiredHeight = texture->getHeight() / 3;
-    
-    if (layoutHeight < layoutDesiredHeight)
+    // Make sure we have at least 1/3 of the texture free for filling
+    if (auto range = layout.growFreeArea(texture->getHeight() / 3))
     {
-        unsigned int difference = layoutDesiredHeight - layoutHeight;
-        
-        auto begin = glyphsY.lower_bound(layoutBegin);
-        auto end = glyphsY.upper_bound(layoutBegin + difference);
+        auto begin = glyphsY.lower_bound(range->first);
+        auto end = glyphsY.upper_bound(range->second);
     
         for (auto it = begin; it != end; ++it)
             glyphs.erase(it->second);
         
         glyphsY.erase(begin, end);
-        
-        layoutBegin += difference;
-        layoutEnd += difference;
-        
-        // Move the layout state to make sure rectangles fit within the allowed area
-        layoutLineBegin = max(layoutLineBegin, layoutBegin);
     }
-}
-
-static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
-{
-    return start / wrap == (start + size - 1) / wrap;
-}
-
-optional<pair<unsigned int, unsigned long long>> FontAtlas::layoutBitmap(unsigned int width, unsigned int height)
-{
-    // Try to fit in the same line
-    if (layoutPosition + width <= texture->getWidth() && layoutLineBegin + height <= layoutEnd && isRangeValid(layoutLineBegin, height, texture->getHeight()))
-    {
-        auto result = make_pair(layoutPosition, layoutLineBegin);
-        
-        layoutPosition += width;
-        layoutLineEnd = max(layoutLineEnd, layoutLineBegin + height);
-        
-        return make_optional(result);
-    }
-    
-    // Try to fit in the next line
-    if (width <= texture->getWidth() && layoutLineEnd + height <= layoutEnd)
-    {
-        if (isRangeValid(layoutLineEnd, height, texture->getHeight()))
-        {
-            auto result = make_pair(0u, layoutLineEnd);
-            
-            layoutPosition = width;
-            layoutLineBegin = layoutLineEnd;
-            layoutLineEnd = layoutLineEnd + height;
-            
-            return make_optional(result);
-        }
-        else
-        {
-            // Try to fit with a wraparound
-            unsigned long long lineWrap = (layoutLineEnd + height) / texture->getHeight() * texture->getHeight();
-            
-            if (lineWrap + height <= layoutEnd)
-            {
-                auto result = make_pair(0u, lineWrap);
-                
-                layoutPosition = width;
-                layoutLineBegin = lineWrap;
-                layoutLineEnd = lineWrap + height;
-                
-                return make_optional(result);
-            }
-        }
-    }
-    
-    // Fail
-    return {};
 }
 
 FontLibrary::FontLibrary(unsigned int atlasWidth, unsigned int atlasHeight)
