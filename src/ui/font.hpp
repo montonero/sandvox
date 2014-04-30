@@ -7,33 +7,29 @@ class Font
 public:
     struct FontMetrics
     {
-        float ascender;
-        float descender;
-        float height;
+        short ascender;
+        short descender;
+        short height;
     };
     
     struct GlyphMetrics
     {
-        float bearingX;
-        float bearingY;
-        float advance;
+        short bearingX, bearingY, advance;
     };
     
     struct GlyphBitmap
     {
-        unsigned short x, y, w, h;
+        GlyphMetrics metrics;
+        short x, y, w, h;
     };
     
     virtual ~Font();
     
-    virtual float getScale(float size) = 0;
+    virtual FontMetrics getMetrics(float size) = 0;
     
-    virtual FontMetrics getMetrics() = 0;
+    virtual optional<GlyphBitmap> getGlyphBitmap(float size, unsigned int cp) = 0;
     
-    virtual optional<GlyphMetrics> getGlyphMetrics(unsigned int cp) = 0;
-    virtual optional<GlyphBitmap> getGlyphBitmap(float scale, unsigned int cp) = 0;
-    
-    virtual float getKerning(unsigned int cp1, unsigned int cp2) = 0;
+    virtual short getKerning(float size, unsigned int cp1, unsigned int cp2) = 0;
 };
 
 class FontAtlas
@@ -42,8 +38,8 @@ public:
     FontAtlas(unsigned int atlasWidth, unsigned int atlasHeight);
     ~FontAtlas();
     
-    optional<Font::GlyphBitmap> getBitmap(Font* font, float scale, unsigned int cp);
-    optional<Font::GlyphBitmap> addBitmap(Font* font, float scale, unsigned int cp, unsigned int width, unsigned int height, const unsigned char* pixels);
+    optional<Font::GlyphBitmap> getBitmap(Font* font, float size, unsigned int cp);
+    optional<Font::GlyphBitmap> addBitmap(Font* font, float size, unsigned int cp, const Font::GlyphMetrics& metrics, unsigned int width, unsigned int height, const unsigned char* pixels);
     
     Texture* getTexture() const { return texture.get(); }
 
@@ -51,7 +47,7 @@ private:
     struct GlyphKey
     {
         Font* font;
-        float scale;
+        float size;
         unsigned int cp;
         
         bool operator==(const GlyphKey& other) const;

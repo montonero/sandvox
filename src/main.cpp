@@ -1498,10 +1498,8 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
     float su = 1.f / fl.getTexture()->getWidth();
     float sv = 1.f / fl.getTexture()->getHeight();
     
-    float xpos = roundf(x);
-    float ypos = roundf(y);
-    
-    float scale = f->getScale(size);
+    short xpos = roundf(x);
+    short ypos = roundf(y);
     
     unsigned int lastch = 0;
     
@@ -1513,17 +1511,14 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
         if (decode(&utfstate, &utfcode, static_cast<unsigned char>(*s)) != UTF8_ACCEPT)
             continue;
         
-        auto metrics = f->getGlyphMetrics(utfcode);
-        auto bitmap = f->getGlyphBitmap(scale, utfcode);
-        
-        if (metrics && bitmap)
+        if (auto bitmap = f->getGlyphBitmap(size, utfcode))
         {
-            xpos += roundf(f->getKerning(lastch, utfcode) * scale);
+            xpos += f->getKerning(size, lastch, utfcode);
             
-            float x0 = xpos + floorf(metrics->bearingX * scale);
-            float y0 = ypos - ceilf(metrics->bearingY * scale);
-            float x1 = x0 + bitmap->w;
-            float y1 = y0 + bitmap->h;
+            short x0 = xpos + bitmap->metrics.bearingX;
+            short y0 = ypos - bitmap->metrics.bearingY;
+            short x1 = x0 + bitmap->w;
+            short y1 = y0 + bitmap->h;
             
             float u0 = su * bitmap->x;
             float u1 = su * (bitmap->x + bitmap->w);
@@ -1538,7 +1533,7 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
             r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u1, v1), color);
             r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u0, v1), color);
             
-            xpos += roundf(metrics->advance * scale);
+            xpos += bitmap->metrics.advance;
             
             lastch = utfcode;
         }
@@ -1778,6 +1773,7 @@ int main()
         const char* text2 = "Ταχίστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός";
         const char* text3 = "דג סקרן שט בים מאוכזב ולפתע מצא חברה";
         const char* text4 = "田居に出で 菜摘むわれをぞ 君召すと 求食り追ひゆく 山城の 打酔へる子ら 藻葉干せよ え舟繋けぬ";
+        const char* text5 = "Разъяренный чтец эгоистично бьёт пятью жердями шустрого фехтовальщика.";
  
         clock_t start = clock();
         
@@ -1785,6 +1781,7 @@ int main()
         drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 100 * density, 24 * density, text2, ~0u);
         drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 200 * density, 28 * density, text3, ~0u);
         drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 350 * density, 36 * density, text4, ~0u);
+        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 500 * density, 25 * density, text5, ~0u);
         
         clock_t middle = clock();
         
@@ -1792,10 +1789,37 @@ int main()
         drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 130 * density, 24 * density, text2, ~0u);
         drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 240 * density, 28 * density, text3, ~0u);
         drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 400 * density, 36 * density, text4, ~0u);
-        
+        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 530 * density, 25 * density, text5, ~0u);
+    
         clock_t end = clock();
         
+        {
+            static float size = 18;
+            static float direction = 1;
+            
+            size += direction;
+            
+            if (size > 50) direction = -1;
+            if (size < 15) direction = 1;
+            
+            const char* text6 = "麤";
+            
+            drawtext(uir, fonts, "sans-ft", width, height, 700 * density, 100 * density, 2 * size * density, text6, ~0u);
+            drawtext(uir, fonts, "sans-stb", width, height, 700 * density, 200 * density, 2 * size * density, text6, ~0u);
+        }
+        
         printf("Rendering fonts took %.2f ms (ft) / %.2f ms (stb)\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
+        
+        float offx = 256.f / width * 2;
+        float offy = 256.f / height * 2;
+        
+        uir.push(vec2(1.f - offx, 1.f), vec2(0.f, 0.f), ~0u);
+        uir.push(vec2(1.f, 1.f), vec2(1.f, 0.f), ~0u);
+        uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
+        
+        uir.push(vec2(1.f - offx, 1.f), vec2(0.f, 0.f), ~0u);
+        uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
+        uir.push(vec2(1.f - offx, 1.f - offy), vec2(0.f, 1.f), ~0u);
         
         uir.flush(fonts.getTexture());
         

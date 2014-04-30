@@ -31,41 +31,16 @@ public:
         FT_Done_Face(face);
     }
     
-    float getScale(float size) override
+    FontMetrics getMetrics(float size) override
     {
-        return size / (face->ascender - face->descender);
+        float scale = getScale(size);
+        
+        return { static_cast<short>(face->ascender * scale), static_cast<short>(face->descender * scale), static_cast<short>(face->height * scale) };
     }
     
-    FontMetrics getMetrics() override
+    optional<GlyphBitmap> getGlyphBitmap(float size, unsigned int cp) override
     {
-        FontMetrics result;
-        
-        result.ascender = face->ascender;
-        result.descender = face->descender;
-        result.height = face->height;
-    
-        return result;
-    }
-    
-    optional<GlyphMetrics> getGlyphMetrics(unsigned int cp) override
-    {
-        unsigned int index = FT_Get_Char_Index(face, cp);
-        
-        if (index)
-        {
-            FT_Load_Glyph(face, index, FT_LOAD_NO_SCALE);
-            
-            const FT_Glyph_Metrics& gm = face->glyph->metrics;
-            
-            return make_optional(GlyphMetrics {float(gm.horiBearingX), float(gm.horiBearingY), float(gm.horiAdvance)});
-        }
-        
-        return {};
-    }
-    
-    optional<GlyphBitmap> getGlyphBitmap(float scale, unsigned int cp) override
-    {
-        if (optional<GlyphBitmap> cached = atlas->getBitmap(this, scale, cp))
+        if (optional<GlyphBitmap> cached = atlas->getBitmap(this, size, cp))
             return cached;
         
         unsigned int index = FT_Get_Char_Index(face, cp);
@@ -74,16 +49,18 @@ public:
         {
             FT_Size_RequestRec req =
             {
-                FT_SIZE_REQUEST_TYPE_SCALES,
+                FT_SIZE_REQUEST_TYPE_REAL_DIM,
                 0,
-                int(scale * (1 << 22)),
+                int(size * (1 << 6)),
                 0, 0
             };
             
             FT_Request_Size(face, &req);
-            FT_Load_Glyph(face, index, FT_LOAD_RENDER | FT_LOAD_NO_HINTING);
+            FT_Load_Glyph(face, index, FT_LOAD_RENDER);
             
             FT_GlyphSlot glyph = face->glyph;
+            
+            GlyphMetrics gm = { static_cast<short>(glyph->bitmap_left), static_cast<short>(glyph->bitmap_top), static_cast<short>(glyph->metrics.horiAdvance >> 6) };
             
             unsigned int gw = glyph->bitmap.width;
             unsigned int gh = glyph->bitmap.rows;
@@ -93,13 +70,13 @@ public:
             for (unsigned int y = 0; y < gh; ++y)
                 memcpy(&pixels[y * (gw + 1)], &glyph->bitmap.buffer[y * glyph->bitmap.pitch], gw);
             
-            return atlas->addBitmap(this, scale, cp, gw + 1, gh + 1, pixels.data());
+            return atlas->addBitmap(this, size, cp, gm, gw + 1, gh + 1, pixels.data());
         }
         
         return {};
     }
     
-    float getKerning(unsigned int cp1, unsigned int cp2) override
+    short getKerning(float size, unsigned int cp1, unsigned int cp2) override
     {
         unsigned int index1 = FT_Get_Char_Index(face, cp1);
         unsigned int index2 = FT_Get_Char_Index(face, cp2);
@@ -108,7 +85,9 @@ public:
         {
             FT_Vector result;
             if (FT_Get_Kerning(face, index1, index2, FT_KERNING_UNSCALED, &result) == 0)
-                return result.x;
+            {
+                return result.x * getScale(size);
+            }
         }
         
         return 0;
@@ -120,8 +99,13 @@ private:
         FT_Library result;
         if (FT_Init_FreeType(&result))
             throw runtime_error("Error initializing FreeType");
-        
+ 
         return result;
+    }
+    
+    float getScale(float size) const
+    {
+        return size / (face->ascender - face->descender);
     }
     
     FontAtlas* atlas;
@@ -161,56 +145,36 @@ public:
     {
     }
     
-    float getScale(float size) override
+    FontMetrics getMetrics(float size) override
     {
-        return stbtt_ScaleForPixelHeight(&font, size);
-    }
-    
-    FontMetrics getMetrics() override
-    {
+        float scale = getScale(size);
+        
         int ascent, descent, linegap;
         stbtt_GetFontVMetrics(&font, &ascent, &descent, &linegap);
- 
-        FontMetrics result;
         
-        result.ascender = ascent;
-        result.descender = descent;
-        result.height = ascent - descent + linegap;
-    
-        return result;
+        int height = ascent - descent + linegap;
+        
+        return { static_cast<short>(ascent * scale), static_cast<short>(descent * scale), static_cast<short>(height * scale) };
     }
     
-    optional<GlyphMetrics> getGlyphMetrics(unsigned int cp) override
+    optional<GlyphBitmap> getGlyphBitmap(float size, unsigned int cp) override
     {
-        unsigned int index = stbtt_FindGlyphIndex(&font, cp);
- 
-        if (index)
-        {
-            int x0, y0, x1, y1;
-            if (!stbtt_GetGlyphBox(&font, index, &x0, &y0, &x1, &y1))
-                x0 = y0 = x1 = y1 = 0;
-            
-            int advance, leftSideBearing;
-            stbtt_GetGlyphHMetrics(&font, index, &advance, &leftSideBearing);
-            
-            return make_optional(GlyphMetrics {float(x0), float(y1), float(advance)});
-        }
-        
-        return {};
-    }
-    
-    optional<GlyphBitmap> getGlyphBitmap(float scale, unsigned int cp) override
-    {
-        if (optional<GlyphBitmap> cached = atlas->getBitmap(this, scale, cp))
+        if (optional<GlyphBitmap> cached = atlas->getBitmap(this, size, cp))
             return cached;
         
         unsigned int index = stbtt_FindGlyphIndex(&font, cp);
         
         if (index)
         {
+            float scale = getScale(size);
+            
             int x0, y0, x1, y1;
             stbtt_GetGlyphBitmapBox(&font, index, scale, scale, &x0, &y0, &x1, &y1);
             
+            int advance, leftSideBearing;
+            stbtt_GetGlyphHMetrics(&font, index, &advance, &leftSideBearing);
+            
+            GlyphMetrics gm = {static_cast<short>(x0), static_cast<short>(-y0), static_cast<short>(advance * scale)};
             unsigned int gw = x1 - x0;
             unsigned int gh = y1 - y0;
             
@@ -218,13 +182,13 @@ public:
             
             stbtt_MakeGlyphBitmap(&font, pixels.data(), gw, gh, gw + 1, scale, scale, index);
             
-            return atlas->addBitmap(this, scale, cp, gw + 1, gh + 1, pixels.data());
+            return atlas->addBitmap(this, size, cp, gm, gw + 1, gh + 1, pixels.data());
         }
         
         return {};
     }
     
-    float getKerning(unsigned int cp1, unsigned int cp2) override
+    short getKerning(float size, unsigned int cp1, unsigned int cp2) override
     {
         if (!font.kern) return 0;
         
@@ -233,13 +197,18 @@ public:
         
         if (index1 && index2)
         {
-            return stbtt_GetGlyphKernAdvance(&font, index1, index2);
+            return stbtt_GetGlyphKernAdvance(&font, index1, index2) * getScale(size);
         }
         
         return 0;
     }
     
 private:
+    float getScale(float size)
+    {
+        return stbtt_ScaleForPixelHeight(&font, size);
+    }
+    
     FontAtlas* atlas;
     
     stbtt_fontinfo font;
@@ -252,12 +221,12 @@ Font::~Font()
 
 bool FontAtlas::GlyphKey::operator==(const GlyphKey& other) const
 {
-    return font == other.font && scale == other.scale && cp == other.cp;
+    return font == other.font && size == other.size && cp == other.cp;
 }
 
 size_t FontAtlas::GlyphKeyHash::operator()(const GlyphKey& key) const
 {
-    return hash_combine(hash_value(key.font), hash_combine(hash_value(key.scale), hash_value(key.cp)));
+    return hash_combine(hash_value(key.font), hash_combine(hash_value(key.size), hash_value(key.cp)));
 }
 
 FontAtlas::FontAtlas(unsigned int atlasWidth, unsigned int atlasHeight)
@@ -272,24 +241,24 @@ FontAtlas::~FontAtlas()
 {
 }
     
-optional<Font::GlyphBitmap> FontAtlas::getBitmap(Font* font, float scale, unsigned int cp)
+optional<Font::GlyphBitmap> FontAtlas::getBitmap(Font* font, float size, unsigned int cp)
 {
-    auto it = glyphs.find({ font, scale, cp });
+    auto it = glyphs.find({ font, size, cp });
     
     return (it == glyphs.end()) ? optional<Font::GlyphBitmap>() : make_optional(it->second);
 }
 
-optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float scale, unsigned int cp, unsigned int width, unsigned int height, const unsigned char* pixels)
+optional<Font::GlyphBitmap> FontAtlas::addBitmap(Font* font, float size, unsigned int cp, const Font::GlyphMetrics& metrics, unsigned int width, unsigned int height, const unsigned char* pixels)
 {
-    assert(glyphs.count({ font, scale, cp }) == 0);
+    assert(glyphs.count({ font, size, cp }) == 0);
     
     auto result = addBitmapData(width, height, pixels);
     
     if (result)
     {
-        Font::GlyphBitmap bitmap = { static_cast<unsigned short>(result->first), static_cast<unsigned short>(result->second), static_cast<unsigned short>(width), static_cast<unsigned short>(height) };
+        Font::GlyphBitmap bitmap = { metrics, static_cast<short>(result->first), static_cast<short>(result->second), static_cast<short>(width), static_cast<short>(height) };
         
-        glyphs[{ font, scale, cp }] = bitmap;
+        glyphs[{ font, size, cp }] = bitmap;
         
         return make_optional(bitmap);
     }
