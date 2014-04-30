@@ -364,11 +364,13 @@ optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutSkyline::addRe
         unsigned long long lineEnd = getLineEnd();
         unsigned long long lineWrap = (lineEnd + height) / atlasHeight * atlasHeight;
         
-        if (lineWrap + height <= areaEnd)
+        if (width <= atlasWidth && lineWrap + height <= areaEnd)
         {
             skyline.clear();
             skyline.push_back(make_pair(0, lineWrap + height));
-            skyline.push_back(make_pair(width, lineWrap));
+            
+            if (width < atlasWidth)
+                skyline.push_back(make_pair(width, lineWrap));
         
             return make_optional(make_pair(0u, lineWrap));
         }
