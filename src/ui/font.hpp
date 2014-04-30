@@ -94,6 +94,7 @@ private:
     private:
         unsigned long long getLineEnd() const;
         unsigned int getSegmentWidth(unsigned int index) const;
+        
         optional<pair<unsigned long long, unsigned int>> tryFit(unsigned int index, unsigned int width, unsigned int height) const;
         
         unsigned int atlasWidth;
