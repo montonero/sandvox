@@ -229,7 +229,12 @@ size_t FontAtlas::GlyphKeyHash::operator()(const GlyphKey& key) const
     return hash_combine(hash_value(key.font), hash_combine(hash_value(key.size), hash_value(key.cp)));
 }
 
-FontAtlas::Layout::Layout(unsigned int atlasWidth, unsigned int atlasHeight)
+static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
+{
+    return start / wrap == (start + size - 1) / wrap;
+}
+
+FontAtlas::LayoutShelf::LayoutShelf(unsigned int atlasWidth, unsigned int atlasHeight)
 : atlasWidth(atlasWidth)
 , atlasHeight(atlasHeight)
 , areaBegin(0)
@@ -240,12 +245,7 @@ FontAtlas::Layout::Layout(unsigned int atlasWidth, unsigned int atlasHeight)
 {
 }
 
-static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
-{
-    return start / wrap == (start + size - 1) / wrap;
-}
-
-optional<pair<unsigned int, unsigned long long>> FontAtlas::Layout::addRect(unsigned int width, unsigned int height)
+optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutShelf::addRect(unsigned int width, unsigned int height)
 {
     // Try to fit in the same line
     if (position + width <= atlasWidth && lineBegin + height <= areaEnd && isRangeValid(lineBegin, height, atlasHeight))
@@ -293,7 +293,7 @@ optional<pair<unsigned int, unsigned long long>> FontAtlas::Layout::addRect(unsi
     return {};
 }
 
-optional<pair<unsigned long long, unsigned long long>> FontAtlas::Layout::growFreeArea(unsigned int desiredHeight)
+optional<pair<unsigned long long, unsigned long long>> FontAtlas::LayoutShelf::growFreeArea(unsigned int desiredHeight)
 {
     assert(areaBegin < areaEnd);
     assert(lineBegin <= lineEnd);
@@ -313,6 +313,137 @@ optional<pair<unsigned long long, unsigned long long>> FontAtlas::Layout::growFr
         lineBegin = max(lineBegin, areaBegin);
         
         return make_optional(make_pair(areaBegin - difference, areaBegin));
+    }
+    
+    return {};
+}
+
+FontAtlas::LayoutSkyline::LayoutSkyline(unsigned int atlasWidth, unsigned int atlasHeight)
+: atlasWidth(atlasWidth)
+, atlasHeight(atlasHeight)
+, areaBegin(0)
+, areaEnd(atlasHeight)
+{
+    skyline.push_back(make_pair(0, 0));
+}
+
+optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutSkyline::addRect(unsigned int width, unsigned int height)
+{
+    int bestindex = -1;
+    unsigned long long besty = 0;
+    unsigned int bestspan = 0;
+    
+    // Try to find a skyline fit without wrapping
+    for (unsigned int index = 0; index < skyline.size(); ++index)
+    {
+        auto fr = tryFit(index, width, height);
+        
+        if (fr && (bestindex < 0 || fr->first < besty))
+        {
+            bestindex = index;
+            besty = fr->first;
+            bestspan = fr->second;
+        }
+    }
+    
+    if (bestindex >= 0)
+    {
+        unsigned int x = skyline[bestindex].first;
+        
+        if (bestindex + bestspan < skyline.size())
+            skyline[bestindex + bestspan].first = x + width;
+        
+        skyline.erase(skyline.begin() + bestindex, skyline.begin() + bestindex + bestspan);
+        skyline.insert(skyline.begin() + bestindex, make_pair(x, besty + height));
+        
+        return make_optional(make_pair(x, besty));
+    }
+    else
+    {
+        // Try to fit with a wraparound
+        unsigned long long lineEnd = getLineEnd();
+        unsigned long long lineWrap = (lineEnd + height) / atlasHeight * atlasHeight;
+        
+        if (lineWrap + height <= areaEnd)
+        {
+            skyline.clear();
+            skyline.push_back(make_pair(0, lineWrap + height));
+            skyline.push_back(make_pair(width, lineWrap));
+        
+            return make_optional(make_pair(0u, lineWrap));
+        }
+    }
+    
+    // Fail
+    return {};
+}
+
+optional<pair<unsigned long long, unsigned long long>> FontAtlas::LayoutSkyline::growFreeArea(unsigned int desiredHeight)
+{
+    unsigned long long lineEnd = getLineEnd();
+
+    assert(areaBegin < areaEnd);
+    assert(lineEnd <= areaEnd);
+    assert(areaEnd - areaBegin <= atlasHeight);
+ 
+    unsigned int freeHeight = areaEnd - lineEnd;
+    
+    if (freeHeight < desiredHeight)
+    {
+        unsigned int difference = desiredHeight - freeHeight;
+        
+        areaBegin += difference;
+        areaEnd += difference;
+        
+        // Move the layout state to make sure rectangles fit within the allowed area
+        for (size_t i = 0; i < skyline.size(); ++i)
+            skyline[i].second = max(skyline[i].second, areaBegin);
+        
+        return make_optional(make_pair(areaBegin - difference, areaBegin));
+    }
+    
+    return {};
+}
+
+unsigned long long FontAtlas::LayoutSkyline::getLineEnd() const
+{
+    unsigned long long result = 0;
+    
+    for (unsigned int i = 0; i < skyline.size(); ++i)
+        result = max(result, skyline[i].second);
+    
+    return result;
+}
+
+unsigned int FontAtlas::LayoutSkyline::getSegmentWidth(unsigned int index) const
+{
+    unsigned int edge = (index + 1 < skyline.size()) ? skyline[index + 1].first : atlasWidth;
+    
+    return edge - skyline[index].first;
+}
+
+optional<pair<unsigned long long, unsigned int>> FontAtlas::LayoutSkyline::tryFit(unsigned int index, unsigned int width, unsigned int height) const
+{
+    if (skyline[index].first + width <= atlasWidth)
+    {
+        unsigned long long y = 0;
+        
+        for (unsigned int i = index; i < skyline.size(); ++i)
+        {
+            y = max(y, skyline[i].second);
+            
+            unsigned int sw = getSegmentWidth(i);
+            
+            if (width <= sw)
+            {
+                if (y + height <= areaEnd && isRangeValid(y, height, atlasHeight))
+                    return make_optional(make_pair(y, (i - index) + (width == sw)));
+                else
+                    return {};
+            }
+            
+            width -= sw;
+        }
     }
     
     return {};

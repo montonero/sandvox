@@ -60,8 +60,16 @@ private:
         size_t operator()(const GlyphKey& key) const;
     };
     
-    struct Layout
+    class LayoutShelf
     {
+    public:
+        LayoutShelf(unsigned int atlasWidth, unsigned int atlasHeight);
+        
+        optional<pair<unsigned int, unsigned long long>> addRect(unsigned int width, unsigned int height);
+        
+        optional<pair<unsigned long long, unsigned long long>> growFreeArea(unsigned int desiredHeight);
+    
+    private:
         unsigned int atlasWidth;
         unsigned int atlasHeight;
         
@@ -72,12 +80,29 @@ private:
         unsigned long long lineEnd;
         
         unsigned int position;
-        
-        Layout(unsigned int atlasWidth, unsigned int atlasHeight);
+    };
+ 
+    class LayoutSkyline
+    {
+    public:
+        LayoutSkyline(unsigned int atlasWidth, unsigned int atlasHeight);
         
         optional<pair<unsigned int, unsigned long long>> addRect(unsigned int width, unsigned int height);
         
         optional<pair<unsigned long long, unsigned long long>> growFreeArea(unsigned int desiredHeight);
+    
+    private:
+        unsigned long long getLineEnd() const;
+        unsigned int getSegmentWidth(unsigned int index) const;
+        optional<pair<unsigned long long, unsigned int>> tryFit(unsigned int index, unsigned int width, unsigned int height) const;
+        
+        unsigned int atlasWidth;
+        unsigned int atlasHeight;
+        
+        unsigned long long areaBegin;
+        unsigned long long areaEnd;
+        
+        vector<pair<unsigned int, unsigned long long>> skyline;
     };
     
     unique_ptr<Texture> texture;
@@ -85,7 +110,7 @@ private:
     unordered_map<GlyphKey, Font::GlyphBitmap, GlyphKeyHash> glyphs;
     multimap<unsigned long long, GlyphKey> glyphsY;
     
-    Layout layout;
+    LayoutSkyline layout;
 };
 
 class FontLibrary

@@ -1821,8 +1821,8 @@ int main()
         uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
         uir.push(vec2(1.f - offx, 1.f - offy), vec2(0.f, 1.f), ~0u);
         
-        fonts.flush();
         uir.flush(fonts.getTexture());
+        fonts.flush();
         
         glfwSwapBuffers(window);
     }
