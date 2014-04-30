@@ -300,17 +300,11 @@ void FontAtlas::flush()
         
         glyphsY.erase(begin, end);
         
-        vector<unsigned char> empty(texture->getWidth());
-        
-        for (unsigned int i = 0; i < difference; ++i)
-        {
-            unsigned int y = (layoutBegin + i) % texture->getHeight();
-            
-            texture->upload(0, 0, 0, TextureRegion { 0, y, 0, texture->getWidth(), 1, 1 }, empty.data(), empty.size());
-        }
-        
         layoutBegin += difference;
         layoutEnd += difference;
+        
+        // Move the layout state to make sure rectangles fit within the allowed area
+        layoutLineBegin = max(layoutLineBegin, layoutBegin);
     }
 }
 
