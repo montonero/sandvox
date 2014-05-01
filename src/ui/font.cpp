@@ -358,23 +358,6 @@ optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutSkyline::addRe
         
         return make_optional(make_pair(x, besty));
     }
-    else
-    {
-        // Try to fit with a wraparound
-        unsigned long long lineEnd = getLineEnd();
-        unsigned long long lineWrap = (lineEnd + height) / atlasHeight * atlasHeight;
-        
-        if (width <= atlasWidth && lineWrap >= lineEnd && lineWrap + height <= areaEnd)
-        {
-            skyline.clear();
-            skyline.push_back(make_pair(0, lineWrap + height));
-            
-            if (width < atlasWidth)
-                skyline.push_back(make_pair(width, lineWrap));
-        
-            return make_optional(make_pair(0u, lineWrap));
-        }
-    }
     
     // Fail
     return {};
@@ -438,7 +421,11 @@ optional<pair<unsigned long long, unsigned int>> FontAtlas::LayoutSkyline::tryFi
             
             if (width <= sw)
             {
-                if (y + height <= areaEnd && isRangeValid(y, height, atlasHeight))
+                // wrap around
+                if (!isRangeValid(y, height, atlasHeight))
+                    y = (y + height) / atlasHeight * atlasHeight;
+                
+                if (y + height <= areaEnd)
                     return make_optional(make_pair(y, (i - index) + (width == sw)));
                 else
                     return {};
