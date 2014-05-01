@@ -84,6 +84,7 @@ public:
         if (index1 && index2)
         {
             FT_Vector result;
+            
             if (FT_Get_Kerning(face, index1, index2, FT_KERNING_UNSCALED, &result) == 0)
             {
                 return result.x * getScale(size);
@@ -97,6 +98,7 @@ private:
     static FT_Library initializeLibrary()
     {
         FT_Library result;
+        
         if (FT_Init_FreeType(&result))
             throw runtime_error("Error initializing FreeType");
  
@@ -229,9 +231,12 @@ size_t FontAtlas::GlyphKeyHash::operator()(const GlyphKey& key) const
     return hash_combine(hash_value(key.font), hash_combine(hash_value(key.size), hash_value(key.cp)));
 }
 
-static bool isRangeValid(unsigned long long start, unsigned int size, unsigned int wrap)
+static unsigned long long wrapAround(unsigned long long start, unsigned int size, unsigned int alignment)
 {
-    return start / wrap == (start + size - 1) / wrap;
+    unsigned long long s0 = start / alignment;
+    unsigned long long s1 = (start + size - 1) / alignment;
+    
+    return (s0 == s1) ? start : s1 * alignment;
 }
 
 FontAtlas::LayoutShelf::LayoutShelf(unsigned int atlasWidth, unsigned int atlasHeight)
@@ -247,49 +252,26 @@ FontAtlas::LayoutShelf::LayoutShelf(unsigned int atlasWidth, unsigned int atlasH
 
 optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutShelf::addRect(unsigned int width, unsigned int height)
 {
-    // Try to fit in the same line
-    if (position + width <= atlasWidth && lineBegin + height <= areaEnd && isRangeValid(lineBegin, height, atlasHeight))
+    unsigned int resultPosition = position;
+    unsigned long long resultLine = lineBegin;
+    
+    if (resultPosition + width > atlasWidth)
     {
-        auto result = make_pair(position, lineBegin);
-        
-        position += width;
-        lineEnd = max(lineEnd, lineBegin + height);
-        
-        return make_optional(result);
+        resultPosition = 0;
+        resultLine = lineEnd;
     }
     
-    // Try to fit in the next line
-    if (width <= atlasWidth && lineEnd + height <= areaEnd)
+    resultLine = wrapAround(resultLine, height, atlasHeight);
+    
+    if (resultPosition + width <= atlasWidth && resultLine + height <= areaEnd)
     {
-        if (isRangeValid(lineEnd, height, atlasHeight))
-        {
-            auto result = make_pair(0u, lineEnd);
-            
-            position = width;
-            lineBegin = lineEnd;
-            lineEnd = lineEnd + height;
-            
-            return make_optional(result);
-        }
-        else
-        {
-            // Try to fit with a wraparound
-            unsigned long long lineWrap = (lineEnd + height) / atlasHeight * atlasHeight;
-            
-            if (lineWrap + height <= areaEnd)
-            {
-                auto result = make_pair(0u, lineWrap);
-                
-                position = width;
-                lineBegin = lineWrap;
-                lineEnd = lineWrap + height;
-                
-                return make_optional(result);
-            }
-        }
+        position = resultPosition + width;
+        lineBegin = resultLine;
+        lineEnd = max(lineEnd, resultLine + height);
+        
+        return make_optional(make_pair(resultPosition, resultLine));
     }
     
-    // Fail
     return {};
 }
 
@@ -365,7 +347,10 @@ optional<pair<unsigned int, unsigned long long>> FontAtlas::LayoutSkyline::addRe
 
 optional<pair<unsigned long long, unsigned long long>> FontAtlas::LayoutSkyline::growFreeArea(unsigned int desiredHeight)
 {
-    unsigned long long lineEnd = getLineEnd();
+    unsigned long long lineEnd = 0;
+    
+    for (auto& s: skyline)
+        lineEnd = max(lineEnd, s.second);
 
     assert(areaBegin < areaEnd);
     assert(lineEnd <= areaEnd);
@@ -381,30 +366,13 @@ optional<pair<unsigned long long, unsigned long long>> FontAtlas::LayoutSkyline:
         areaEnd += difference;
         
         // Move the layout state to make sure rectangles fit within the allowed area
-        for (size_t i = 0; i < skyline.size(); ++i)
-            skyline[i].second = max(skyline[i].second, areaBegin);
+        for (auto& s: skyline)
+            s.second = max(s.second, areaBegin);
         
         return make_optional(make_pair(areaBegin - difference, areaBegin));
     }
     
     return {};
-}
-
-unsigned long long FontAtlas::LayoutSkyline::getLineEnd() const
-{
-    unsigned long long result = 0;
-    
-    for (unsigned int i = 0; i < skyline.size(); ++i)
-        result = max(result, skyline[i].second);
-    
-    return result;
-}
-
-unsigned int FontAtlas::LayoutSkyline::getSegmentWidth(unsigned int index) const
-{
-    unsigned int edge = (index + 1 < skyline.size()) ? skyline[index + 1].first : atlasWidth;
-    
-    return edge - skyline[index].first;
 }
 
 optional<pair<unsigned long long, unsigned int>> FontAtlas::LayoutSkyline::tryFit(unsigned int index, unsigned int width, unsigned int height) const
@@ -415,23 +383,22 @@ optional<pair<unsigned long long, unsigned int>> FontAtlas::LayoutSkyline::tryFi
         
         for (unsigned int i = index; i < skyline.size(); ++i)
         {
+            unsigned int segmentEnd = (i + 1 < skyline.size()) ? skyline[i + 1].first : atlasWidth;
+            unsigned int segmentWidth = segmentEnd - skyline[i].first;
+            
             y = max(y, skyline[i].second);
             
-            unsigned int sw = getSegmentWidth(i);
-            
-            if (width <= sw)
+            if (width <= segmentWidth)
             {
-                // wrap around
-                if (!isRangeValid(y, height, atlasHeight))
-                    y = (y + height) / atlasHeight * atlasHeight;
+                y = wrapAround(y, height, atlasHeight);
                 
                 if (y + height <= areaEnd)
-                    return make_optional(make_pair(y, (i - index) + (width == sw)));
+                    return make_optional(make_pair(y, (i - index) + (width == segmentWidth)));
                 else
                     return {};
             }
             
-            width -= sw;
+            width -= segmentWidth;
         }
     }
     
