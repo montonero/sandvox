@@ -119,7 +119,7 @@ namespace ui
         FontLibrary(unsigned int atlasWidth, unsigned int atlasHeight);
         ~FontLibrary();
         
-        void addFont(const string& name, const string& path, bool freetype);
+        void addFont(const string& name, const string& path);
         Font* getFont(const string& name);
         
         void flush();

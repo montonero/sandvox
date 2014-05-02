@@ -475,11 +475,11 @@ namespace ui
     {
     }
 
-    void FontLibrary::addFont(const string& name, const string& path, bool freetype)
+    void FontLibrary::addFont(const string& name, const string& path)
     {
         assert(fonts.count(name) == 0);
         
-        if (freetype)
+        if (true)
             fonts[name] = make_unique<FontFT>(atlas.get(), path);
         else
             fonts[name] = make_unique<FontSTB>(atlas.get(), path);

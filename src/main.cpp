@@ -1496,12 +1496,10 @@ int main()
     ProgramManager pm("../../src/shaders", &fw);
     TextureManager tm("../../data", &fw);
     
-    // const char* fontpath = "../../data/Roboto-Regular.ttf";
-    const char* fontpath = "/Library/Fonts/Arial Unicode.ttf";
+    const char* fontpath = "../../data/Roboto-Regular.ttf";
     
-    ui::FontLibrary fonts(512, 512);
-    fonts.addFont("sans-ft", fontpath, true);
-    fonts.addFont("sans-stb", fontpath, false);
+    ui::FontLibrary fonts(1024, 1024);
+    fonts.addFont("sans", fontpath);
     
     auto chunk = generateWorld(2);
     
@@ -1668,56 +1666,22 @@ int main()
         
         uir.begin(windowWidth, windowHeight, density);
         
-        int width = framebufferWidth;
-        int height = framebufferHeight;
-        
         const char* text1 = "Victor jagt zwölf Boxkämpfer quer über den großen Sylter Deich";
         const char* text2 = "Ταχίστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός";
         const char* text3 = "דג סקרן שט בים מאוכזב ולפתע מצא חברה";
         const char* text4 = "田居に出で 菜摘むわれをぞ 君召すと 求食り追ひゆく 山城の 打酔へる子ら 藻葉干せよ え舟繋けぬ";
         const char* text5 = "Разъяренный чтец эгоистично бьёт пятью жердями шустрого фехтовальщика.";
  
-        clock_t start = clock();
-        
-        uir.text(vec2(10, 30), "sans-ft", text1, 18, vec4(1));
-        uir.text(vec2(10, 100), "sans-ft", text2, 24, vec4(1));
-        uir.text(vec2(10, 200), "sans-ft", text3, 28, vec4(1));
-        uir.text(vec2(10, 350), "sans-ft", text4, 36, vec4(1));
-        uir.text(vec2(10, 500), "sans-ft", text5, 25, vec4(1));
-        
-        clock_t middle = clock();
-        
-        uir.text(vec2(10, 55), "sans-stb", text1, 18, vec4(1));
-        uir.text(vec2(10, 130), "sans-stb", text2, 24, vec4(1));
-        uir.text(vec2(10, 240), "sans-stb", text3, 28, vec4(1));
-        uir.text(vec2(10, 400), "sans-stb", text4, 36, vec4(1));
-        uir.text(vec2(10, 530), "sans-stb", text5, 25, vec4(1));
-        
-        clock_t end = clock();
-        
-        {
-            static float size = 18;
-            static float direction = 1;
-            
-            size += direction;
-            
-            if (size > 50) direction = -1;
-            if (size < 15) direction = 1;
-            
-            const char* text6 = "麤";
-            
-            uir.text(vec2(700, 100), "sans-ft", text6, 2 * size, vec4(1));
-            uir.text(vec2(700, 200), "sans-stb", text6, 2 * size, vec4(1));
-        }
-        
-        printf("Rendering fonts took %.2f ms (ft) / %.2f ms (stb)\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
+        uir.text(vec2(10, 30), "sans", text1, 18, vec4(1));
+        uir.text(vec2(10, 100), "sans", text2, 24, vec4(1));
+        uir.text(vec2(10, 200), "sans", text3, 28, vec4(1));
+        uir.text(vec2(10, 350), "sans", text4, 36, vec4(1));
+        uir.text(vec2(10, 500), "sans", text5, 25, vec4(1));
         
         uir.end();
         
         glfwSwapBuffers(window);
     }
-    
-    dumpTexture(fonts.getTexture(), "../../fontatlas.png");
     
     glfwDestroyWindow(window);
     
