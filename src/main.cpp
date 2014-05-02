@@ -1490,9 +1490,9 @@ decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
   return *state;
 }
 
-void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int height, int x, int y, float size, const char* text, unsigned int color)
+void drawtext(ui::Renderer& r, ui::FontLibrary& fl, const char* font, int width, int height, int x, int y, float size, const char* text, unsigned int color)
 {
-    Font* f = fl.getFont(font);
+    ui::Font* f = fl.getFont(font);
     
     float sx = 1.f / width, sy = 1.f / height;
     float su = 1.f / fl.getTexture()->getWidth();
@@ -1544,17 +1544,6 @@ void drawtext(ui::Renderer& r, FontLibrary& fl, const char* font, int width, int
     }
 }
 
-float getWindowDensity(GLFWwindow* window)
-{
-    int fbWidth, fbHeight;
-    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
-    
-    int width, height;
-    glfwGetWindowSize(window, &width, &height);
-
-    return height == 0 ? 1 : float(fbHeight) / height;
-}
-
 void dumpTexture(Texture* tex, const string& path)
 {
     Image image(Texture::Type_2D, tex->getFormat(), tex->getWidth(), tex->getHeight(), 1, 1);
@@ -1602,7 +1591,7 @@ int main()
     // const char* fontpath = "../../data/Roboto-Regular.ttf";
     const char* fontpath = "/Library/Fonts/Arial Unicode.ttf";
     
-    FontLibrary fonts(512, 512);
+    ui::FontLibrary fonts(512, 512);
     fonts.addFont("sans-ft", fontpath, true);
     fonts.addFont("sans-stb", fontpath, false);
     
@@ -1639,7 +1628,7 @@ int main()
         dynamicsWorld.addRigidBody(chunkBody);
     }
     
-    ui::Renderer uir(65536, pm.get("ui-vs", "ui-fs"));
+    ui::Renderer uir(fonts, pm.get("ui-vs", "ui-fs"));
     
     while (!glfwWindowShouldClose(window))
     {
@@ -1690,25 +1679,25 @@ int main()
     
         fw.processChanges();
         
-        float density = getWindowDensity(window);
-    
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
+        int windowWidth, windowHeight;
+        glfwGetWindowSize(window, &windowWidth, &windowHeight);
         
-        camera.setProjection(float(width) / height, glm::radians(60.f), 0.1f, 1000.f);
+        int framebufferWidth, framebufferHeight;
+        glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+        
+        float density = windowHeight == 0 ? 1 : float(framebufferHeight) / windowHeight;
+        
+        camera.setProjection(float(windowWidth) / windowHeight, glm::radians(60.f), 0.1f, 1000.f);
         
         mat4 viewproj = camera.getViewProjectionMatrix();
         
         if (chunk.physicsShape)
         {
-            int width, height;
-            glfwGetWindowSize(window, &width, &height);
-        
             double xpos, ypos;
             glfwGetCursorPos(window, &xpos, &ypos);
             
-            vec4 clip0(xpos / width * 2 - 1, 1 - ypos / height * 2, 0, 1);
-            vec4 clip1(xpos / width * 2 - 1, 1 - ypos / height * 2, 1, 1);
+            vec4 clip0(xpos / windowWidth * 2 - 1, 1 - ypos / windowHeight * 2, 0, 1);
+            vec4 clip1(xpos / windowWidth * 2 - 1, 1 - ypos / windowHeight * 2, 1, 1);
             
             vec4 pw0 = glm::inverse(viewproj) * clip0;
             vec4 pw1 = glm::inverse(viewproj) * clip1;
@@ -1724,7 +1713,7 @@ int main()
                 brushPosition = vec3(callback.m_hitPointWorld.getX(), callback.m_hitPointWorld.getY(), callback.m_hitPointWorld.getZ());
         }
         
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
         glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
         glClearDepth(1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1768,6 +1757,11 @@ int main()
         
         glDisable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);
+        
+        uir.begin(windowWidth, windowHeight, density);
+        
+        int width = framebufferWidth;
+        int height = framebufferHeight;
         
         const char* text1 = "Victor jagt zwölf Boxkämpfer quer über den großen Sylter Deich";
         const char* text2 = "Ταχίστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός";
@@ -1821,8 +1815,7 @@ int main()
         uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
         uir.push(vec2(1.f - offx, 1.f - offy), vec2(0.f, 1.f), ~0u);
         
-        uir.flush(fonts.getTexture());
-        fonts.flush();
+        uir.end();
         
         glfwSwapBuffers(window);
     }
