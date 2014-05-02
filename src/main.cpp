@@ -1451,98 +1451,6 @@ static void errorCallback(int error, const char* description)
 {
     fputs(description, stderr);
 }
-// Copyright (c) 2008-2010 Bjoern Hoehrmann <bjoern@hoehrmann.de>
-// See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
-
-#define UTF8_ACCEPT 0
-#define UTF8_REJECT 12
-
-static const uint8_t utf8d[] = {
-  // The first part of the table maps bytes to character classes that
-  // to reduce the size of the transition table and create bitmasks.
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,
-   7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-   8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-  10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8,
-
-  // The second part is a transition table that maps a combination
-  // of a state of the automaton and a character class to a state.
-   0,12,24,36,60,96,84,12,12,12,48,72, 12,12,12,12,12,12,12,12,12,12,12,12,
-  12, 0,12,12,12,12,12, 0,12, 0,12,12, 12,24,12,12,12,12,12,24,12,24,12,12,
-  12,12,12,12,12,12,12,24,12,12,12,12, 12,24,12,12,12,12,12,12,12,24,12,12,
-  12,12,12,12,12,12,12,36,12,36,12,12, 12,36,12,12,12,12,12,36,12,36,12,12,
-  12,36,12,12,12,12,12,12,12,12,12,12, 
-};
-
-uint32_t inline
-decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
-  uint32_t type = utf8d[byte];
-
-  *codep = (*state != UTF8_ACCEPT) ?
-    (byte & 0x3fu) | (*codep << 6) :
-    (0xff >> type) & (byte);
-
-  *state = utf8d[256 + *state + type];
-  return *state;
-}
-
-void drawtext(ui::Renderer& r, ui::FontLibrary& fl, const char* font, int width, int height, int x, int y, float size, const char* text, unsigned int color)
-{
-    ui::Font* f = fl.getFont(font);
-    
-    float sx = 1.f / width, sy = 1.f / height;
-    float su = 1.f / fl.getTexture()->getWidth();
-    float sv = 1.f / fl.getTexture()->getHeight();
-    
-    short xpos = roundf(x);
-    short ypos = roundf(y);
-    
-    unsigned int lastch = 0;
-    
-    uint32_t utfstate = 0;
-    uint32_t utfcode = 0;
-    
-    for (const char* s = text; *s; ++s)
-    {
-        if (decode(&utfstate, &utfcode, static_cast<unsigned char>(*s)) != UTF8_ACCEPT)
-            continue;
-        
-        if (auto bitmap = f->getGlyphBitmap(size, utfcode))
-        {
-            xpos += f->getKerning(size, lastch, utfcode);
-            
-            short x0 = xpos + bitmap->metrics.bearingX;
-            short y0 = ypos - bitmap->metrics.bearingY;
-            short x1 = x0 + bitmap->w;
-            short y1 = y0 + bitmap->h;
-            
-            float u0 = su * bitmap->x;
-            float u1 = su * (bitmap->x + bitmap->w);
-            float v0 = sv * bitmap->y;
-            float v1 = sv * (bitmap->y + bitmap->h);
-            
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u0, v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u1, v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u1, v1), color);
-            
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y0 * sy * 2), vec2(u0, v0), color);
-            r.push(vec2(x1 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u1, v1), color);
-            r.push(vec2(x0 * sx * 2 - 1, 1 - y1 * sy * 2), vec2(u0, v1), color);
-            
-            xpos += bitmap->metrics.advance;
-            
-            lastch = utfcode;
-        }
-        else
-        {
-            lastch = 0;
-        }
-    }
-}
 
 void dumpTexture(Texture* tex, const string& path)
 {
@@ -1771,20 +1679,20 @@ int main()
  
         clock_t start = clock();
         
-        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 30 * density, 18 * density, text1, ~0u);
-        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 100 * density, 24 * density, text2, ~0u);
-        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 200 * density, 28 * density, text3, ~0u);
-        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 350 * density, 36 * density, text4, ~0u);
-        drawtext(uir, fonts, "sans-ft", width, height, 10 * density, 500 * density, 25 * density, text5, ~0u);
+        uir.text(vec2(10, 30), "sans-ft", text1, 18, vec4(1));
+        uir.text(vec2(10, 100), "sans-ft", text2, 24, vec4(1));
+        uir.text(vec2(10, 200), "sans-ft", text3, 28, vec4(1));
+        uir.text(vec2(10, 350), "sans-ft", text4, 36, vec4(1));
+        uir.text(vec2(10, 500), "sans-ft", text5, 25, vec4(1));
         
         clock_t middle = clock();
         
-        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 55 * density, 18 * density, text1, ~0u);
-        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 130 * density, 24 * density, text2, ~0u);
-        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 240 * density, 28 * density, text3, ~0u);
-        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 400 * density, 36 * density, text4, ~0u);
-        drawtext(uir, fonts, "sans-stb", width, height, 10 * density, 530 * density, 25 * density, text5, ~0u);
-    
+        uir.text(vec2(10, 55), "sans-stb", text1, 18, vec4(1));
+        uir.text(vec2(10, 130), "sans-stb", text2, 24, vec4(1));
+        uir.text(vec2(10, 240), "sans-stb", text3, 28, vec4(1));
+        uir.text(vec2(10, 400), "sans-stb", text4, 36, vec4(1));
+        uir.text(vec2(10, 530), "sans-stb", text5, 25, vec4(1));
+        
         clock_t end = clock();
         
         {
@@ -1798,22 +1706,11 @@ int main()
             
             const char* text6 = "麤";
             
-            drawtext(uir, fonts, "sans-ft", width, height, 700 * density, 100 * density, 2 * size * density, text6, ~0u);
-            drawtext(uir, fonts, "sans-stb", width, height, 700 * density, 200 * density, 2 * size * density, text6, ~0u);
+            uir.text(vec2(700, 100), "sans-ft", text6, 2 * size, vec4(1));
+            uir.text(vec2(700, 200), "sans-stb", text6, 2 * size, vec4(1));
         }
         
         printf("Rendering fonts took %.2f ms (ft) / %.2f ms (stb)\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
-        
-        float offx = density * 256.f / width * 2;
-        float offy = density * 256.f / height * 2;
-        
-        uir.push(vec2(1.f - offx, 1.f), vec2(0.f, 0.f), ~0u);
-        uir.push(vec2(1.f, 1.f), vec2(1.f, 0.f), ~0u);
-        uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
-        
-        uir.push(vec2(1.f - offx, 1.f), vec2(0.f, 0.f), ~0u);
-        uir.push(vec2(1.f, 1.f - offy), vec2(1.f, 1.f), ~0u);
-        uir.push(vec2(1.f - offx, 1.f - offy), vec2(0.f, 1.f), ~0u);
         
         uir.end();
         

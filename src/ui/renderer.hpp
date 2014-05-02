@@ -20,11 +20,6 @@ namespace ui
         void rect(const vec2& x0y0, const vec2& x1y1, float r, const vec4& color);
         void text(const vec2& pos, const string& font, const string& text, float size, const vec4& color);
         
-        void push(const vec2& pos, const vec2& uv, unsigned int color)
-        {
-            vertices.push_back(Vertex { pos, glm::i16vec2(uv * 8192.f), color });
-        }
-        
         void end();
 
 	private:
@@ -32,15 +27,21 @@ namespace ui
 		{
 			vec2 pos;
             glm::i16vec2 uv;
-			unsigned int color;
+			glm::u8vec4 color;
 		};
 
-		vector<Vertex> vertices;
-
-		shared_ptr<Buffer> vb;
-		unique_ptr<Geometry> geometry;
-
+        void push(const vec2& pos, const vec2& uv, const vec4& color);
+        
         FontLibrary& fonts;
 		Program* program;
+        
+		shared_ptr<Buffer> vb;
+		unique_ptr<Geometry> geometry;
+        
+		vector<Vertex> vertices;
+
+        vec2 canvasOffset;
+        vec2 canvasScale;
+        float canvasDensity;
 	};
 }
