@@ -62,8 +62,17 @@ namespace ui
         canvasDensity = density;
     }
     
-    void Renderer::rect(const vec2& x0y0, const vec2& x1y1, float r, const vec4& color)
+    void Renderer::rect(const vec2& pos, const vec2& size, float r, const vec4& color)
     {
+        if (r == 0)
+        {
+            vec2 uv = vec2(3, 3);
+        
+            quad(pos, uv, pos + size, uv, color);
+        }
+        else
+        {
+        }
     }
     
     void Renderer::text(const vec2& pos, const string& font, const string& text, float size, const vec4& color)
@@ -102,13 +111,7 @@ namespace ui
                 float v0 = sv * bitmap->y;
                 float v1 = sv * (bitmap->y + bitmap->h);
                 
-                push(vec2(x0, y0), vec2(u0, v0), color);
-                push(vec2(x1, y0), vec2(u1, v0), color);
-                push(vec2(x1, y1), vec2(u1, v1), color);
-                
-                push(vec2(x0, y0), vec2(u0, v0), color);
-                push(vec2(x1, y1), vec2(u1, v1), color);
-                push(vec2(x0, y1), vec2(u0, v1), color);
+                quad(vec2(x0, y0), vec2(u0, v0), vec2(x1, y1), vec2(u1, v1), color);
                 
                 pen.x += bitmap->metrics.advance;
                 
@@ -156,9 +159,26 @@ namespace ui
         vertices.clear();
 	}
     
-    void Renderer::push(const vec2& pos, const vec2& uv, const vec4& color)
+    void Renderer::poly(const vec2* vertices, size_t count, float r, const vec4& color)
     {
-        vertices.push_back({ pos * canvasScale + canvasOffset, glm::i16vec2(uv * 8192.f), glm::u8vec4(color * 255.f + 0.5f) });
     }
+   
+    void Renderer::quad(const vec2& x0y0, const vec2& uv0, const vec2& x1y1, const vec2& uv1, const vec4& color)
+    {
+        glm::u8vec4 c(color * 255.f + 0.5f);
         
+        vec2 v0 = x0y0 * canvasScale + canvasOffset;
+        vec2 v1 = x1y1 * canvasScale + canvasOffset;
+        
+        glm::i16vec2 t0 = glm::i16vec2(uv0 * 8192.f);
+        glm::i16vec2 t1 = glm::i16vec2(uv1 * 8192.f);
+        
+        vertices.push_back({ vec2(v0.x, v0.y), glm::i16vec2(t0.x, t0.y), c });
+        vertices.push_back({ vec2(v1.x, v0.y), glm::i16vec2(t1.x, t0.y), c });
+        vertices.push_back({ vec2(v1.x, v1.y), glm::i16vec2(t1.x, t1.y), c });
+        
+        vertices.push_back({ vec2(v0.x, v0.y), glm::i16vec2(t0.x, t0.y), c });
+        vertices.push_back({ vec2(v1.x, v1.y), glm::i16vec2(t1.x, t1.y), c });
+        vertices.push_back({ vec2(v0.x, v1.y), glm::i16vec2(t0.x, t1.y), c });
+    }
 }

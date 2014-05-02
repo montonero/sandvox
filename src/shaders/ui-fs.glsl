@@ -9,5 +9,7 @@ uniform sampler2D Texture;
 
 void main()
 {
-	out_color = vec4(color.rgb, color.a * texture(Texture, uv).r);
+    float alpha = uv.x > 2 ? 1 : texture(Texture, uv).r;
+    
+	out_color = vec4(color.rgb, color.a * alpha);
 }
