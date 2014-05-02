@@ -34,8 +34,8 @@ static const VertexFormatGL kVertexFormat[Geometry::Format_Count] =
 	{ 2, GL_FLOAT, false },
 	{ 3, GL_FLOAT, false },
 	{ 4, GL_FLOAT, false },
-	{ 2, GL_UNSIGNED_SHORT, false },
-	{ 4, GL_UNSIGNED_SHORT, false },
+	{ 2, GL_SHORT, false },
+	{ 4, GL_SHORT, false },
 	{ 4, GL_UNSIGNED_BYTE, false },
 	{ 4, GL_UNSIGNED_BYTE, true },
 };
