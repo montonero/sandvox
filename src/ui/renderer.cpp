@@ -74,9 +74,9 @@ namespace ui
         float su = 1.f / fonts.getTexture()->getWidth();
         float sv = 1.f / fonts.getTexture()->getHeight();
         
-        Font::FontMetrics metrics = f->getMetrics(size);
+        Font::FontMetrics metrics = f->getMetrics(size * canvasDensity);
         
-        vec2 pen = pos - vec2(0, metrics.ascender);
+        vec2 pen = pos * canvasDensity - vec2(0, metrics.ascender);
         
         unsigned int lastch = 0;
         
@@ -88,14 +88,14 @@ namespace ui
             if (utf8decode(&utfstate, &utfcode, static_cast<unsigned char>(ch)) != UTF8_ACCEPT)
                 continue;
             
-            if (auto bitmap = f->getGlyphBitmap(size, utfcode))
+            if (auto bitmap = f->getGlyphBitmap(size * canvasDensity, utfcode))
             {
-                pen += f->getKerning(size, lastch, utfcode);
+                pen += f->getKerning(size * canvasDensity, lastch, utfcode);
                 
-                float x0 = pen.x + bitmap->metrics.bearingX;
-                float y0 = pen.y - bitmap->metrics.bearingY;
-                float x1 = x0 + bitmap->w;
-                float y1 = y0 + bitmap->h;
+                float x0 = (pen.x + bitmap->metrics.bearingX) / canvasDensity;
+                float y0 = (pen.y - bitmap->metrics.bearingY) / canvasDensity;
+                float x1 = x0 + bitmap->w / canvasDensity;
+                float y1 = y0 + bitmap->h / canvasDensity;
                 
                 float u0 = su * bitmap->x;
                 float u1 = su * (bitmap->x + bitmap->w);
