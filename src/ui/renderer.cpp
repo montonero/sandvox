@@ -49,6 +49,8 @@ namespace ui
     , program(program)
     , canvasDensity(1)
 	{
+        vb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(Vertex), 256, Buffer::Usage_Dynamic);
+        ib = make_shared<Buffer>(Buffer::Type_Index, sizeof(unsigned int), 1024, Buffer::Usage_Dynamic);
 	}
 
 	Renderer::~Renderer()
@@ -57,6 +59,8 @@ namespace ui
 
     void Renderer::begin(unsigned int width, unsigned int height, float density)
     {
+        assert(vertices.empty() && indices.empty());
+        
         canvasScale = vec2(2.f / width, -2.f / height);
         canvasOffset = vec2(-1, 1);
         canvasDensity = density;
@@ -145,14 +149,14 @@ namespace ui
     {
         fonts.flush();
     
-        if (vertices.empty())
+        if (vertices.empty() || indices.empty())
             return;
         
-        if (!vb || vb->getElementCount() < vertices.size())
+        growBuffer(vb, vertices.size());
+        growBuffer(ib, indices.size());
+        
+        if (!geometry)
         {
-            size_t size = 256;
-            while (size < vertices.size()) size += size * 3 / 2;
-            
             vector<Geometry::Element> layout =
             {
                 { 0, offsetof(Vertex, pos), Geometry::Format_Float2 },
@@ -160,11 +164,11 @@ namespace ui
                 { 0, offsetof(Vertex, color), Geometry::Format_Color }
             };
             
-            vb = make_shared<Buffer>(Buffer::Type_Vertex, sizeof(Vertex), size, Buffer::Usage_Dynamic);
-            geometry = make_unique<Geometry>(layout, vb);
+            geometry = make_unique<Geometry>(layout, vb, ib);
         }
  
         vb->upload(0, vertices.data(), vertices.size() * sizeof(Vertex));
+        ib->upload(0, indices.data(), indices.size() * sizeof(unsigned int));
         
         if (program)
         {
@@ -174,6 +178,7 @@ namespace ui
         }
         
         vertices.clear();
+        indices.clear();
 	}
     
     void Renderer::poly(const vec2* data, size_t count, float r, const vec4& color)
@@ -181,17 +186,21 @@ namespace ui
         glm::u8vec4 c = glm::u8vec4(color * 255.f + 0.5f);
         glm::i16vec2 t = glm::i16vec2(3 * 8192);
         
-        // draw the solid portion
-        vec2 v0 = data[0] * canvasScale + canvasOffset;
+        size_t offset = vertices.size();
         
+        // draw the solid portion
         for (size_t i = 0; i < count; ++i)
         {
-            vec2 vi = data[i] * canvasScale + canvasOffset;
-            vec2 vn = data[(i + 1) % count] * canvasScale + canvasOffset;
+            vec2 v = data[i] * canvasScale + canvasOffset;
             
-            vertices.push_back({ v0, t, c });
-            vertices.push_back({ vi, t, c });
-            vertices.push_back({ vn, t, c });
+            vertices.push_back({ v, t, c });
+        }
+        
+        for (size_t i = 2; i < count; ++i)
+        {
+            indices.push_back(offset + 0);
+            indices.push_back(offset + (i - 1));
+            indices.push_back(offset + i);
         }
     }
    
@@ -205,12 +214,33 @@ namespace ui
         glm::i16vec2 t0 = glm::i16vec2(uv0 * 8192.f);
         glm::i16vec2 t1 = glm::i16vec2(uv1 * 8192.f);
         
+        size_t offset = vertices.size();
+        
         vertices.push_back({ vec2(v0.x, v0.y), glm::i16vec2(t0.x, t0.y), c });
         vertices.push_back({ vec2(v1.x, v0.y), glm::i16vec2(t1.x, t0.y), c });
         vertices.push_back({ vec2(v1.x, v1.y), glm::i16vec2(t1.x, t1.y), c });
-        
-        vertices.push_back({ vec2(v0.x, v0.y), glm::i16vec2(t0.x, t0.y), c });
-        vertices.push_back({ vec2(v1.x, v1.y), glm::i16vec2(t1.x, t1.y), c });
         vertices.push_back({ vec2(v0.x, v1.y), glm::i16vec2(t0.x, t1.y), c });
+        
+        indices.push_back(offset + 0);
+        indices.push_back(offset + 1);
+        indices.push_back(offset + 2);
+        
+        indices.push_back(offset + 0);
+        indices.push_back(offset + 2);
+        indices.push_back(offset + 3);
+    }
+    
+    void Renderer::growBuffer(shared_ptr<Buffer>& buffer, size_t count)
+    {
+        if (buffer->getElementCount() < count)
+        {
+            size_t newCount = buffer->getElementCount();
+            while (newCount < count)
+                newCount = newCount * 3 / 2;
+            
+            buffer = make_shared<Buffer>(buffer->getType(), buffer->getElementSize(), newCount, buffer->getUsage());
+            
+            geometry.reset();
+        }
     }
 }

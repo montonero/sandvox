@@ -33,13 +33,16 @@ namespace ui
         void poly(const vec2* data, size_t count, float r, const vec4& color);
         void quad(const vec2& x0y0, const vec2& uv0, const vec2& x1y1, const vec2& uv1, const vec4& color);
         
+        void growBuffer(shared_ptr<Buffer>& buffer, size_t count);
+        
         FontLibrary& fonts;
 		Program* program;
         
-		shared_ptr<Buffer> vb;
+		shared_ptr<Buffer> vb, ib;
 		unique_ptr<Geometry> geometry;
         
 		vector<Vertex> vertices;
+        vector<unsigned int> indices;
 
         vec2 canvasOffset;
         vec2 canvasScale;

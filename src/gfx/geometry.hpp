@@ -50,6 +50,8 @@ public:
     unsigned int getElementSize() const { return elementSize; }
     unsigned int getElementCount() const { return elementCount; }
     
+    Usage getUsage() const { return usage; }
+    
 private:
     unsigned int id;
     
