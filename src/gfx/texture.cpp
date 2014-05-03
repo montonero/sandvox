@@ -16,6 +16,9 @@ struct TextureFormatGL
     GLenum dataType;
 };
 
+// The number of texture units is implementation dependent, but must be at least 80.
+static const unsigned int kTextureUnitDummy = 79;
+
 static const GLenum kTextureTarget[Texture::Type_Count] =
 {
 	GL_TEXTURE_2D,
@@ -57,7 +60,7 @@ Texture::Texture(Type type, Format format, unsigned int width, unsigned int heig
 
     glGenTextures(1, &id);
     
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE0 + kTextureUnitDummy);
 	glBindTexture(target, id);
 
     if (type == Type_2D || type == Type_Cube)
@@ -95,7 +98,7 @@ void Texture::upload(unsigned int index, unsigned int face, unsigned int mip, co
     
 	const TextureFormatGL& desc = kTextureFormat[format];
     
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE0 + kTextureUnitDummy);
 	glBindTexture(target, id);
     
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -148,7 +151,7 @@ void Texture::download(unsigned int index, unsigned int face, unsigned int mip, 
     
 	const TextureFormatGL& desc = kTextureFormat[format];
     
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE0 + kTextureUnitDummy);
 	glBindTexture(target, id);
     
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
