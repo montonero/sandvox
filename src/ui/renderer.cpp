@@ -72,6 +72,23 @@ namespace ui
         }
         else
         {
+            static const int kP = 8;
+            
+            vec2 v[4*kP];
+            
+            for (int i = 0; i < kP; ++i)
+            {
+                float a = float(i) / (kP - 1) * glm::pi<float>() / 2;
+                float x = glm::cos(a) * r;
+                float y = glm::sin(a) * r;
+                
+                v[0*kP+i] = pos + vec2(r-x, r-y);
+                v[1*kP+i] = pos + vec2(size.x-r+y, r-x);
+                v[2*kP+i] = pos + vec2(size.x-r+x, size.y-r+y);
+                v[3*kP+i] = pos + vec2(r-y, size.y-r+x);
+            }
+            
+            poly(v, 4*kP, 0.5f, color);
         }
     }
     
@@ -159,13 +176,28 @@ namespace ui
         vertices.clear();
 	}
     
-    void Renderer::poly(const vec2* vertices, size_t count, float r, const vec4& color)
+    void Renderer::poly(const vec2* data, size_t count, float r, const vec4& color)
     {
+        glm::u8vec4 c = glm::u8vec4(color * 255.f + 0.5f);
+        glm::i16vec2 t = glm::i16vec2(3 * 8192);
+        
+        // draw the solid portion
+        vec2 v0 = data[0] * canvasScale + canvasOffset;
+        
+        for (size_t i = 0; i < count; ++i)
+        {
+            vec2 vi = data[i] * canvasScale + canvasOffset;
+            vec2 vn = data[(i + 1) % count] * canvasScale + canvasOffset;
+            
+            vertices.push_back({ v0, t, c });
+            vertices.push_back({ vi, t, c });
+            vertices.push_back({ vn, t, c });
+        }
     }
    
     void Renderer::quad(const vec2& x0y0, const vec2& uv0, const vec2& x1y1, const vec2& uv1, const vec4& color)
     {
-        glm::u8vec4 c(color * 255.f + 0.5f);
+        glm::u8vec4 c = glm::u8vec4(color * 255.f + 0.5f);
         
         vec2 v0 = x0y0 * canvasScale + canvasOffset;
         vec2 v1 = x1y1 * canvasScale + canvasOffset;

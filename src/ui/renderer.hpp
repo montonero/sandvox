@@ -30,7 +30,7 @@ namespace ui
 			glm::u8vec4 color;
 		};
 
-        void poly(const vec2* vertices, size_t count, float r, const vec4& color);
+        void poly(const vec2* data, size_t count, float r, const vec4& color);
         void quad(const vec2& x0y0, const vec2& uv0, const vec2& x1y1, const vec2& uv1, const vec4& color);
         
         FontLibrary& fonts;
