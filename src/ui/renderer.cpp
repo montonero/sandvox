@@ -174,7 +174,7 @@ namespace ui
         {
             program->bind();
             fonts.getTexture()->bind(0);
-            geometry->draw(Geometry::Primitive_Triangles, 0, vertices.size());
+            geometry->draw(Geometry::Primitive_Triangles, 0, indices.size());
         }
         
         vertices.clear();
