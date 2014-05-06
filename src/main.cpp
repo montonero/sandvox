@@ -157,8 +157,26 @@ void generateWorld(voxel::Grid& grid)
     grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
 }
 
-void brushWorld(voxel::Grid& grid, const vec3& position)
+void brushWorld(voxel::Grid& grid, const vec3& position, float radius)
 {
+    glm::i32vec3 min = glm::i32vec3(glm::floor(position - radius));
+    glm::i32vec3 max = glm::i32vec3(glm::ceil(position + radius));
+    voxel::Region region(min, max);
+    
+    voxel::Box box = grid.read(region);
+    
+    for (int z = 0; z < box.getDepth(); ++z)
+        for (int y = 0; y < box.getHeight(); ++y)
+            for (int x = 0; x < box.getWidth(); ++x)
+            {
+                voxel::Cell& c = box(x, y, z);
+                
+                float r = glm::distance(position, vec3(x, y, z) + vec3(min));
+                
+                c.occupancy = std::max(c.occupancy, static_cast<unsigned char>((1 - glm::clamp(r / radius, 0.f, 1.f)) * 200.f));
+            }
+    
+    grid.write(region, box);
 }
 
 pair<unique_ptr<Geometry>, unsigned int> generateSphere(float radius)
@@ -216,6 +234,7 @@ bool wireframe = false;
 Camera camera;
 vec3 cameraAngles;
 vec3 brushPosition;
+float brushRadius = 1.f;
 
 bool keyDown[GLFW_KEY_LAST];
 bool mouseDown[GLFW_MOUSE_BUTTON_LAST];
@@ -253,6 +272,11 @@ static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
     
     mouseLastX = xpos;
     mouseLastY = ypos;
+}
+
+static void scrollCallback(GLFWwindow* window, double xoff, double yoff)
+{
+    brushRadius = glm::clamp(brushRadius + float(yoff), 1.f, 20.f);
 }
 
 static void errorCallback(int error, const char* description)
@@ -315,6 +339,7 @@ int main(int argc, const char** argv)
     glfwSetKeyCallback(window, keyCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
+    glfwSetScrollCallback(window, scrollCallback);
     
     printf("Version: %s\n", glGetString(GL_VERSION));
     printf("Renderer: %s\n", glGetString(GL_RENDERER));
@@ -328,7 +353,7 @@ int main(int argc, const char** argv)
     ui::FontLibrary fonts(1024, 1024);
     fonts.addFont("sans", basePath + "/data/Roboto-Regular.ttf");
     
-    auto brushGeom = generateSphere(0.1);
+    auto brushGeom = generateSphere(1.f);
     
     camera.setView(vec3(0.5f, 20.f, 22.f), quat(cameraAngles = vec3(0.f, 0.83f, 4.683f)));
     
@@ -435,7 +460,7 @@ int main(int argc, const char** argv)
                 
                 if (mouseDown[GLFW_MOUSE_BUTTON_LEFT])
                 {
-                    brushWorld(grid, brushPosition);
+                    brushWorld(grid, brushPosition, brushRadius);
                     chunk = generateMesh(&dynamicsWorld, grid);
                 }
             }
@@ -474,7 +499,7 @@ int main(int argc, const char** argv)
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             
-            mat4 world = glm::translate(glm::mat4(), brushPosition);
+            mat4 world = glm::translate(glm::mat4(), brushPosition) * glm::scale(glm::mat4(), vec3(brushRadius));
             
             glUniformMatrix4fv(prog->getHandle("World"), 1, false, glm::value_ptr(world));
             glUniformMatrix4fv(prog->getHandle("ViewProjection"), 1, false, glm::value_ptr(viewproj));
