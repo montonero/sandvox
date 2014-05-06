@@ -103,7 +103,7 @@ Mesh generateWorld()
                     
                     float hill = ((x - 32) / 8.f) * ((x - 32) / 8.f) + ((y - 32) / 8.f) * ((y - 32) / 8.f);
                     
-                    c.occupancy = (z < 10) ? 255 : (z > 20) ? 0 : (1.f - glm::clamp(hill, 0.f, 1.f)) * 255;
+                    c.occupancy = (z < 5) ? 255 : (z > 10) ? 0 : (1.f - glm::clamp(sqrtf(hill), 0.f, 1.f)) * 255;
                     c.material = 1;
                 }
         
