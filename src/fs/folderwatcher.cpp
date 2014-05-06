@@ -1,4 +1,5 @@
-#include "folderwatcher.hpp"
+#include "common.hpp"
+#include "fs/folderwatcher.hpp"
 
 #include <CoreServices/CoreServices.h>
 

@@ -1,4 +1,5 @@
-#include "texture.hpp"
+#include "common.hpp"
+#include "gfx/texture.hpp"
 
 #include "fs/path.hpp"
 #include "gfx/image.hpp"

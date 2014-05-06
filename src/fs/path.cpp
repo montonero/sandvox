@@ -1,4 +1,5 @@
-#include "path.hpp"
+#include "common.hpp"
+#include "fs/path.hpp"
 
 string Path::full(const string& path)
 {

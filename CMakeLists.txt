@@ -31,6 +31,7 @@ include_directories(deps/stb)
 include_directories(src)
 
 file(GLOB_RECURSE SOURCES src/*)
+list(REMOVE_ITEM SOURCES ${CMAKE_SOURCE_DIR}/src/common-pch.cpp)
 
 add_executable(sandvox ${SOURCES})
 
@@ -40,4 +41,4 @@ target_link_libraries(sandvox BulletCollision BulletDynamics LinearMath)
 target_link_libraries(sandvox "-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo")
 
 SET_TARGET_PROPERTIES(sandvox PROPERTIES XCODE_ATTRIBUTE_GCC_PRECOMPILE_PREFIX_HEADER YES) 
-SET_TARGET_PROPERTIES(sandvox PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER src/common.hpp)
+SET_TARGET_PROPERTIES(sandvox PROPERTIES XCODE_ATTRIBUTE_GCC_PREFIX_HEADER src/common-pch.cpp)

@@ -1,4 +1,5 @@
-#include "program.hpp"
+#include "common.hpp"
+#include "gfx/program.hpp"
 
 #include "fs/path.hpp"
 

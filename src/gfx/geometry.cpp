@@ -1,4 +1,5 @@
-#include "geometry.hpp"
+#include "common.hpp"
+#include "gfx/geometry.hpp"
 
 #include <OpenGL/gl3.h>
 

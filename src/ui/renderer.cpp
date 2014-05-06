@@ -1,4 +1,5 @@
-#include "renderer.hpp"
+#include "common.hpp"
+#include "ui/renderer.hpp"
 
 #include "gfx/geometry.hpp"
 #include "gfx/program.hpp"
@@ -201,6 +202,17 @@ namespace ui
             indices.push_back(offset + 0);
             indices.push_back(offset + (i - 1));
             indices.push_back(offset + i);
+        }
+        
+        // draw the antialiased border
+        if (r > 0)
+        {
+            for (size_t i = 0; i < count; ++i)
+            {
+                // vec2 v = data[i] * canvasScale + canvasOffset;
+                //
+                // vertices.push_back({ v, t, c });
+            }
         }
     }
    

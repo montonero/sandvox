@@ -1,4 +1,5 @@
-#include "image.hpp"
+#include "common.hpp"
+#include "gfx/image.hpp"
 
 #include "stb_image.h"
 

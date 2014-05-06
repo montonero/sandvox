@@ -1,3 +1,4 @@
+#include "common.hpp"
 #include <GLFW/glfw3.h>
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
@@ -1620,7 +1621,7 @@ int main()
         }
         
         glViewport(0, 0, framebufferWidth, framebufferHeight);
-        glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+        glClearColor(168.f / 255.f, 197.f / 255.f, 236.f / 255.f, 1.0f);
         glClearDepth(1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
