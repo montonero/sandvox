@@ -15,6 +15,9 @@ namespace voxel
     }
  
     Box::Box(unsigned int width, unsigned int height, unsigned int depth)
+    : width(width)
+    , height(height)
+    , depth(depth)
     {
         data.reset(new Cell[width * height * depth]);
         
@@ -46,8 +49,8 @@ namespace voxel
         if (region.empty())
             return;
         
-        glm::ivec3 sourceOffset = sourceRegion.begin() - region.begin();
-        glm::ivec3 targetOffset = targetRegion.begin() - region.begin();
+        glm::ivec3 sourceOffset = region.begin() - sourceRegion.begin();
+        glm::ivec3 targetOffset = region.begin() - targetRegion.begin();
         
         glm::ivec3 size = region.size();
         
@@ -90,6 +93,8 @@ namespace voxel
     
     void Grid::write(const Region& region, const Box& box)
     {
+        assert(region.size() == glm::i32vec3(box.getWidth(), box.getHeight(), box.getDepth()));
+        
         vector<glm::i32vec3> chunkIds = getChunkIds(region);
         
         for (auto cid: chunkIds)
