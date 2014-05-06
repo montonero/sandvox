@@ -17,6 +17,7 @@
 #include "ui/font.hpp"
 #include "ui/renderer.hpp"
 
+#include "fs/path.hpp"
 #include "fs/folderwatcher.hpp"
 
 #include "glm/gtc/matrix_transform.hpp"
@@ -1462,7 +1463,26 @@ void dumpTexture(Texture* tex, const string& path)
     image.saveToPNG(path);
 }
 
-int main()
+string getBasePath(const string& exepath, const string& marker)
+{
+    string path = Path::full(exepath);
+    
+    for (int i = 0; i < 5; ++i)
+    {
+        string::size_type slash = path.find_last_of('/');
+        if (slash == string::npos)
+            break;
+        
+        path.erase(slash);
+        
+        if (Path::exists(path + "/" + marker))
+            return path;
+    }
+    
+    throw runtime_error("Failed to find base path");
+}
+
+int main(int argc, const char** argv)
 {
     glfwSetErrorCallback(errorCallback);
     
@@ -1493,14 +1513,14 @@ int main()
     printf("Version: %s\n", glGetString(GL_VERSION));
     printf("Renderer: %s\n", glGetString(GL_RENDERER));
     
-    FolderWatcher fw("../..");
-    ProgramManager pm("../../src/shaders", &fw);
-    TextureManager tm("../../data", &fw);
+    string basePath = getBasePath(argv[0], "data");
     
-    const char* fontpath = "../../data/Roboto-Regular.ttf";
+    FolderWatcher fw(basePath);
+    ProgramManager pm(basePath + "/src/shaders", &fw);
+    TextureManager tm(basePath + "/data", &fw);
     
     ui::FontLibrary fonts(1024, 1024);
-    fonts.addFont("sans", fontpath);
+    fonts.addFont("sans", basePath + "/data/Roboto-Regular.ttf");
     
     auto chunk = generateWorld(2);
     
