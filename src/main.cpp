@@ -80,8 +80,12 @@ struct Mesh
         
         auto physicsGeometry = make_unique<MeshPhysicsGeometry>(vb, ib);
         
+        clock_t start = clock();
         unique_ptr<btCollisionShape> physicsShape(new btBvhTriangleMeshShape(physicsGeometry.get(), true));
-        
+        clock_t end = clock();
+    
+        printf("Physics shape built in %.1f msec\n", (end - start) * 1000.0 / CLOCKS_PER_SEC);
+ 
         return Mesh { make_unique<Geometry>(layout, gvb, gib), static_cast<unsigned int>(ib.size()), move(physicsGeometry), move(physicsShape) };
     }
 };
@@ -132,8 +136,12 @@ MeshInstance generateMesh(btDynamicsWorld* world, const voxel::Grid& grid)
     
     auto p = mesher->generate(box, vec3(-32, -32, 0), 1, voxel::MeshOptions {});
     
+    clock_t start = clock();
     shared_ptr<Mesh> mesh = make_shared<Mesh>(Mesh::create(p.first, p.second));
     unique_ptr<PhysicsBody> body = make_unique<PhysicsBody>(world, mesh->physicsShape.get(), 0.f);
+    clock_t end = clock();
+    
+    printf("Generation finished in %.1f msec\n", (end - start) * 1000.0 / CLOCKS_PER_SEC);
     
     return { mesh, move(body) };
 }
@@ -157,7 +165,7 @@ void generateWorld(voxel::Grid& grid)
     grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
 }
 
-void brushWorld(voxel::Grid& grid, const vec3& position, float radius)
+void brushWorld(voxel::Grid& grid, const vec3& position, float radius, bool additive)
 {
     glm::i32vec3 min = glm::i32vec3(glm::floor(position - radius));
     glm::i32vec3 max = glm::i32vec3(glm::ceil(position + radius));
@@ -173,7 +181,10 @@ void brushWorld(voxel::Grid& grid, const vec3& position, float radius)
                 
                 float r = glm::distance(position, vec3(x, y, z) + vec3(min));
                 
-                c.occupancy = std::max(c.occupancy, static_cast<unsigned char>((1 - glm::clamp(r / radius, 0.f, 1.f)) * 200.f));
+                if (additive)
+                    c.occupancy = std::max(c.occupancy + 0, static_cast<int>(glm::clamp(1 - r / radius, 0.f, 1.f) * 10.f));
+                else
+                    c.occupancy = std::min(c.occupancy + 0, static_cast<int>(glm::clamp(r / radius - 1, 0.f, 1.f) * 200.f));
             }
     
     grid.write(region, box);
@@ -235,6 +246,7 @@ Camera camera;
 vec3 cameraAngles;
 vec3 brushPosition;
 float brushRadius = 1.f;
+bool brushAdditive = true;
 
 bool keyDown[GLFW_KEY_LAST];
 bool mouseDown[GLFW_MOUSE_BUTTON_LAST];
@@ -254,6 +266,8 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
     
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         wireframe = !wireframe;
+    
+    brushAdditive = (mods & GLFW_MOD_CONTROL) == 0;
 }
 
 static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
@@ -456,12 +470,18 @@ int main(int argc, const char** argv)
             
             if (callback.hasHit())
             {
-                brushPosition = vec3(callback.m_hitPointWorld.getX(), callback.m_hitPointWorld.getY(), callback.m_hitPointWorld.getZ());
+                vec3 hitPos = vec3(callback.m_hitPointWorld.getX(), callback.m_hitPointWorld.getY(), callback.m_hitPointWorld.getZ());
                 
                 if (mouseDown[GLFW_MOUSE_BUTTON_LEFT])
                 {
-                    brushWorld(grid, brushPosition, brushRadius);
+                    brushPosition = glm::mix(brushPosition, hitPos, 0.1f);
+                    
+                    brushWorld(grid, brushPosition, brushRadius, brushAdditive);
                     chunk = generateMesh(&dynamicsWorld, grid);
+                }
+                else
+                {
+                    brushPosition = hitPos;
                 }
             }
         }
@@ -501,8 +521,11 @@ int main(int argc, const char** argv)
             
             mat4 world = glm::translate(glm::mat4(), brushPosition) * glm::scale(glm::mat4(), vec3(brushRadius));
             
+            vec3 brushColor = brushAdditive ? vec3(0, 0, 1) : vec3(1, 0, 0);
+            
             glUniformMatrix4fv(prog->getHandle("World"), 1, false, glm::value_ptr(world));
             glUniformMatrix4fv(prog->getHandle("ViewProjection"), 1, false, glm::value_ptr(viewproj));
+            glUniform3fv(prog->getHandle("Color"), 1, glm::value_ptr(brushColor));
             
             if (brushGeom.first)
                 brushGeom.first->draw(Geometry::Primitive_Triangles, 0, brushGeom.second);
