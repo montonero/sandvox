@@ -86,37 +86,79 @@ struct Mesh
     }
 };
 
-Mesh generateWorld()
+struct PhysicsBody
+{
+    btDynamicsWorld* world;
+    
+    btDefaultMotionState motionState;
+    btRigidBody* rigidBody;
+    
+    PhysicsBody(btDynamicsWorld* world, btCollisionShape* shape, float mass)
+    : world(world)
+    , rigidBody(nullptr)
+    {
+        btVector3 localInertia;
+        
+        if (mass > 0)
+            shape->calculateLocalInertia(mass, localInertia);
+        else
+            localInertia = btVector3(0, 0, 0);
+        
+        btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, &motionState, shape, localInertia);
+        
+        rigidBody = new btRigidBody(rbInfo);
+        
+        world->addRigidBody(rigidBody);
+    }
+    
+    ~PhysicsBody()
+    {
+        world->removeRigidBody(rigidBody);
+        delete rigidBody;
+    }
+};
+
+struct MeshInstance
+{
+    shared_ptr<Mesh> mesh;
+    unique_ptr<PhysicsBody> body;
+};
+
+MeshInstance generateMesh(btDynamicsWorld* world, const voxel::Grid& grid)
 {
     unique_ptr<voxel::Mesher> mesher = voxel::createMesherMarchingCubes();
     
-    voxel::Grid grid;
+    voxel::Box box = grid.read(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)));
     
-    {
-        voxel::Box box(64, 64, 32);
-        
-        for (int z = 0; z < box.getDepth(); ++z)
-            for (int y = 0; y < box.getHeight(); ++y)
-                for (int x = 0; x < box.getWidth(); ++x)
-                {
-                    voxel::Cell& c = box(x, y, z);
-                    
-                    float hill = ((x - 32) / 8.f) * ((x - 32) / 8.f) + ((y - 32) / 8.f) * ((y - 32) / 8.f);
-                    
-                    c.occupancy = (z < 5) ? 255 : (z > 10) ? 0 : (1.f - glm::clamp(sqrtf(hill), 0.f, 1.f)) * 255;
-                    c.material = 1;
-                }
-        
-        grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
-    }
+    auto p = mesher->generate(box, vec3(-32, -32, 0), 1, voxel::MeshOptions {});
     
-    {
-        voxel::Box box = grid.read(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)));
-        
-        auto p = mesher->generate(box, vec3(-32, -32, 0), 1, voxel::MeshOptions {});
-        
-        return Mesh::create(p.first, p.second);
-    }
+    shared_ptr<Mesh> mesh = make_shared<Mesh>(Mesh::create(p.first, p.second));
+    unique_ptr<PhysicsBody> body = make_unique<PhysicsBody>(world, mesh->physicsShape.get(), 0.f);
+    
+    return { mesh, move(body) };
+}
+
+void generateWorld(voxel::Grid& grid)
+{
+    voxel::Box box(64, 64, 32);
+    
+    for (int z = 0; z < box.getDepth(); ++z)
+        for (int y = 0; y < box.getHeight(); ++y)
+            for (int x = 0; x < box.getWidth(); ++x)
+            {
+                voxel::Cell& c = box(x, y, z);
+                
+                float hill = ((x - 32) / 8.f) * ((x - 32) / 8.f) + ((y - 32) / 8.f) * ((y - 32) / 8.f);
+                
+                c.occupancy = (z < 5) ? 255 : (z > 10) ? 0 : (1.f - glm::clamp(sqrtf(hill), 0.f, 1.f)) * 255;
+                c.material = 1;
+            }
+    
+    grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
+}
+
+void brushWorld(voxel::Grid& grid, const vec3& position)
+{
 }
 
 pair<unique_ptr<Geometry>, unsigned int> generateSphere(float radius)
@@ -286,8 +328,6 @@ int main(int argc, const char** argv)
     ui::FontLibrary fonts(1024, 1024);
     fonts.addFont("sans", basePath + "/data/Roboto-Regular.ttf");
     
-    auto chunk = generateWorld();
-    
     auto brushGeom = generateSphere(0.1);
     
     camera.setView(vec3(0.5f, 20.f, 22.f), quat(cameraAngles = vec3(0.f, 0.83f, 4.683f)));
@@ -304,18 +344,10 @@ int main(int argc, const char** argv)
 	
 	dynamicsWorld.setGravity(btVector3(0,-10,0));
 
-    if (false)
-    {
-        btTransform groundTransform;
-        groundTransform.setIdentity();
-
-        btDefaultMotionState* motionState = new btDefaultMotionState(groundTransform);
-        btRigidBody::btRigidBodyConstructionInfo rbInfo(0, motionState, chunk.physicsShape.get(), btVector3(0, 0, 0));
-        
-        btRigidBody* chunkBody = new btRigidBody(rbInfo);
-
-        dynamicsWorld.addRigidBody(chunkBody);
-    }
+    voxel::Grid grid;
+    generateWorld(grid);
+    
+    MeshInstance chunk = generateMesh(&dynamicsWorld, grid);
     
     ui::Renderer uir(fonts, pm.get("ui-vs", "ui-fs"));
     
@@ -380,7 +412,6 @@ int main(int argc, const char** argv)
         
         mat4 viewproj = camera.getViewProjectionMatrix();
         
-        if (chunk.physicsShape)
         {
             double xpos, ypos;
             glfwGetCursorPos(window, &xpos, &ypos);
@@ -399,7 +430,15 @@ int main(int argc, const char** argv)
             dynamicsWorld.rayTest(callback.m_rayFromWorld, callback.m_rayToWorld, callback);
             
             if (callback.hasHit())
+            {
                 brushPosition = vec3(callback.m_hitPointWorld.getX(), callback.m_hitPointWorld.getY(), callback.m_hitPointWorld.getZ());
+                
+                if (mouseDown[GLFW_MOUSE_BUTTON_LEFT])
+                {
+                    brushWorld(grid, brushPosition);
+                    chunk = generateMesh(&dynamicsWorld, grid);
+                }
+            }
         }
         
         glViewport(0, 0, framebufferWidth, framebufferHeight);
@@ -424,8 +463,8 @@ int main(int argc, const char** argv)
             glUniform1i(prog->getHandle("AlbedoSide"), 1);
             glUniformMatrix4fv(prog->getHandle("ViewProjection"), 1, false, glm::value_ptr(viewproj));
             
-            if (chunk.geometry)
-                chunk.geometry->draw(Geometry::Primitive_Triangles, 0, chunk.geometryIndices);
+            if (chunk.mesh->geometry)
+                chunk.mesh->geometry->draw(Geometry::Primitive_Triangles, 0, chunk.mesh->geometryIndices);
         }
         
         if (Program* prog = pm.get("brush-vs", "brush-fs"))
