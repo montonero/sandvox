@@ -5,6 +5,7 @@
 #include <memory>
 #include <functional>
 #include <optional>
+#include <algorithm>
 
 #include <vector>
 #include <unordered_map>
@@ -52,6 +53,30 @@ namespace std
         size_t operator()(const pair<T, U>& p) const noexcept
         {
             return hash_combine(hash_value(p.first), hash_value(p.second));
+        }
+    };
+       
+    template <typename T, glm::precision P> struct hash<glm::detail::tvec2<T, P>>
+    {
+        size_t operator()(const glm::detail::tvec2<T, P>& v) const noexcept
+        {
+            return hash_combine(hash_value(v.x), hash_value(v.y));
+        }
+    };
+    
+    template <typename T, glm::precision P> struct hash<glm::detail::tvec3<T, P>>
+    {
+        size_t operator()(const glm::detail::tvec3<T, P>& v) const noexcept
+        {
+            return hash_combine(hash_combine(hash_value(v.x), hash_value(v.y)), hash_value(v.z));
+        }
+    };
+ 
+    template <typename T, glm::precision P> struct hash<glm::detail::tvec4<T, P>>
+    {
+        size_t operator()(const glm::detail::tvec4<T, P>& v) const noexcept
+        {
+            return hash_combine(hash_combine(hash_value(v.x), hash_value(v.y)), hash_combine(hash_value(v.z), hash_value(v.w)));
         }
     };
 }
