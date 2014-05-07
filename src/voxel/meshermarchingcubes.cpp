@@ -511,8 +511,9 @@ namespace voxel
         {
             pair<vector<MeshVertex>, vector<unsigned int>> generate(const Box& box, const vec3& offset, float cellSize, const MeshOptions& options) override
             {
-                const int Lod = 0;
-                const float isolevel = 1.f / 255.f;
+                const int lod = 0;
+                const bool estimateNormals = false;
+                const float isolevel = 0.5f / 255.f;
                 
                 unsigned int sizeX = box.getWidth(), sizeY = box.getHeight(), sizeZ = box.getDepth();
                 assert(sizeX > 2 && sizeY > 2 && sizeZ > 2);
@@ -525,30 +526,40 @@ namespace voxel
                         {
                             GridVertex& gv = grid[x + (sizeX - 1) * (y + (sizeY - 1) * z)];
                             
-                            const Cell& c000 = box(x + 0, y + 0, z + 0);
-                            const Cell& c100 = box(x + 1, y + 0, z + 0);
-                            const Cell& c110 = box(x + 1, y + 1, z + 0);
-                            const Cell& c010 = box(x + 0, y + 1, z + 0);
-                            const Cell& c001 = box(x + 0, y + 0, z + 1);
-                            const Cell& c101 = box(x + 1, y + 0, z + 1);
-                            const Cell& c111 = box(x + 1, y + 1, z + 1);
-                            const Cell& c011 = box(x + 0, y + 1, z + 1);
-                            
-                            gv.iso = (
-                                (c000.occupancy + c100.occupancy + c110.occupancy + c010.occupancy) +
-                                (c001.occupancy + c101.occupancy + c111.occupancy + c011.occupancy)) / float(255 * 8);
-                            
-                            gv.nx = -(
-                                (c100.occupancy + c110.occupancy + c101.occupancy + c111.occupancy) -
-                                (c000.occupancy + c010.occupancy + c001.occupancy + c011.occupancy)) / float(255 * 4);
-                            
-                            gv.ny = -(
-                                (c110.occupancy + c010.occupancy + c111.occupancy + c011.occupancy) -
-                                (c100.occupancy + c000.occupancy + c101.occupancy + c001.occupancy)) / float(255 * 4);
-                            
-                            gv.nz = -(
-                                (c001.occupancy + c101.occupancy + c111.occupancy + c011.occupancy) -
-                                (c000.occupancy + c100.occupancy + c110.occupancy + c010.occupancy)) / float(255 * 4);
+                            if (estimateNormals)
+                            {
+                                const Cell& c000 = box(x + 0, y + 0, z + 0);
+                                const Cell& c100 = box(x + 1, y + 0, z + 0);
+                                const Cell& c110 = box(x + 1, y + 1, z + 0);
+                                const Cell& c010 = box(x + 0, y + 1, z + 0);
+                                const Cell& c001 = box(x + 0, y + 0, z + 1);
+                                const Cell& c101 = box(x + 1, y + 0, z + 1);
+                                const Cell& c111 = box(x + 1, y + 1, z + 1);
+                                const Cell& c011 = box(x + 0, y + 1, z + 1);
+                                
+                                gv.iso = (
+                                          (c000.occupancy + c100.occupancy + c110.occupancy + c010.occupancy) +
+                                          (c001.occupancy + c101.occupancy + c111.occupancy + c011.occupancy)) / float(255 * 8);
+                                
+                                gv.nx = -(
+                                          (c100.occupancy + c110.occupancy + c101.occupancy + c111.occupancy) -
+                                          (c000.occupancy + c010.occupancy + c001.occupancy + c011.occupancy)) / float(255 * 4);
+                                
+                                gv.ny = -(
+                                          (c110.occupancy + c010.occupancy + c111.occupancy + c011.occupancy) -
+                                          (c100.occupancy + c000.occupancy + c101.occupancy + c001.occupancy)) / float(255 * 4);
+                                
+                                gv.nz = -(
+                                          (c001.occupancy + c101.occupancy + c111.occupancy + c011.occupancy) -
+                                          (c000.occupancy + c100.occupancy + c110.occupancy + c010.occupancy)) / float(255 * 4);
+                            }
+                            else
+                            {
+                                gv.iso = box(x, y, z).occupancy;
+                                gv.nx = 0;
+                                gv.ny = 0;
+                                gv.nz = 1;
+                            }
                         }
                 
                 vector<MeshVertex> vb;
@@ -567,8 +578,29 @@ namespace voxel
                             const GridVertex& v111 = grid[(x + 1) + (sizeX - 1) * ((y + 1) + (sizeY - 1) * (z + 1))];
                             const GridVertex& v011 = grid[(x + 0) + (sizeX - 1) * ((y + 1) + (sizeY - 1) * (z + 1))];
                             
-                            CubeGenerator<Lod>::generate(vb, ib, v000, v100, v110, v010, v001, v101, v111, v011, isolevel, offset + vec3(x, y, z) * cellSize, cellSize);
+                            CubeGenerator<lod>::generate(vb, ib, v000, v100, v110, v010, v001, v101, v111, v011, isolevel, offset + vec3(x, y, z) * cellSize, cellSize);
                         }
+                
+                if (!estimateNormals)
+                {
+                    // rebuild normals from scratch
+                    unordered_map<glm::i32vec3, vec3> normals;
+                    
+                    #define Q(v) glm::i32vec3((v - offset) * 16.f + 0.5f)
+                    
+                    for (size_t i = 0; i < ib.size(); i += 3)
+                    {
+                        vec3 vn = glm::cross(vb[ib[i+1]].position - vb[ib[i+0]].position, vb[ib[i+2]].position - vb[ib[i+0]].position);
+                        normals[Q(vb[ib[i+0]].position)] += vn;
+                        normals[Q(vb[ib[i+1]].position)] += vn;
+                        normals[Q(vb[ib[i+2]].position)] += vn;
+                    }
+                    
+                    for (size_t i = 0; i < vb.size(); ++i)
+                        vb[i].normal = glm::normalize(normals[Q(vb[i].position)]);
+                    
+                    #undef Q
+                }
                 
                 return make_pair(move(vb), move(ib));
             }
