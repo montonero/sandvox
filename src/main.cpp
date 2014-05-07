@@ -128,9 +128,9 @@ struct MeshInstance
     unique_ptr<PhysicsBody> body;
 };
 
-MeshInstance generateMesh(btDynamicsWorld* world, const voxel::Grid& grid)
+MeshInstance generateMesh(btDynamicsWorld* world, const voxel::Grid& grid, bool mmc)
 {
-    unique_ptr<voxel::Mesher> mesher = voxel::createMesherMarchingCubes();
+    unique_ptr<voxel::Mesher> mesher = mmc ? voxel::createMesherMarchingCubes() : voxel::createMesherSurfaceNets();
     
     voxel::Box box = grid.read(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)));
     
@@ -159,8 +159,15 @@ void generateWorld(voxel::Grid& grid)
                 float hill = ((x - 32) / 8.f) * ((x - 32) / 8.f) + ((y - 32) / 8.f) * ((y - 32) / 8.f);
                 
                 c.occupancy = (z < 5) ? 255 : (z > 10) ? 0 : (1.f - glm::clamp(sqrtf(hill), 0.f, 1.f)) * 255;
-                c.material = 1;
+                c.material = 0;
             }
+    
+    box(20, 20, 10).occupancy = 255;
+    box(22, 22, 10).occupancy = 128;
+    box(24, 24, 10).occupancy = 64;
+    box(26, 26, 10).occupancy = 32;
+    box(28, 28, 10).occupancy = 16;
+    box(30, 30, 10).occupancy = 8;
     
     grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
 }
@@ -247,6 +254,8 @@ vec3 cameraAngles;
 vec3 brushPosition;
 float brushRadius = 1.f;
 bool brushAdditive = true;
+bool mesherMC = false;
+bool mesherMCChanged = false;
 
 bool keyDown[GLFW_KEY_LAST];
 bool mouseDown[GLFW_MOUSE_BUTTON_LAST];
@@ -266,6 +275,12 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
     
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         wireframe = !wireframe;
+    
+    if (key == GLFW_KEY_M && action == GLFW_PRESS)
+    {
+        mesherMC = !mesherMC;
+        mesherMCChanged = true;
+    }
     
     brushAdditive = (mods & GLFW_MOD_CONTROL) == 0;
 }
@@ -386,7 +401,7 @@ int main(int argc, const char** argv)
     voxel::Grid grid;
     generateWorld(grid);
     
-    MeshInstance chunk = generateMesh(&dynamicsWorld, grid);
+    MeshInstance chunk = generateMesh(&dynamicsWorld, grid, mesherMC);
     
     ui::Renderer uir(fonts, pm.get("ui-vs", "ui-fs"));
     
@@ -477,7 +492,7 @@ int main(int argc, const char** argv)
                     brushPosition = glm::mix(brushPosition, hitPos, 0.1f);
                     
                     brushWorld(grid, brushPosition, brushRadius, brushAdditive);
-                    chunk = generateMesh(&dynamicsWorld, grid);
+                    chunk = generateMesh(&dynamicsWorld, grid, mesherMC);
                 }
                 else
                 {
@@ -486,6 +501,12 @@ int main(int argc, const char** argv)
             }
         }
         
+        if (mesherMCChanged)
+        {
+            mesherMCChanged = false;
+            chunk = generateMesh(&dynamicsWorld, grid, mesherMC);
+        }
+ 
         glViewport(0, 0, framebufferWidth, framebufferHeight);
         glClearColor(168.f / 255.f, 197.f / 255.f, 236.f / 255.f, 1.0f);
         glClearDepth(1.f);
