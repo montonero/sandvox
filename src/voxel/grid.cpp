@@ -18,6 +18,7 @@ namespace voxel
     : width(width)
     , height(height)
     , depth(depth)
+    , slice(width * height)
     {
         data.reset(new Cell[width * height * depth]);
         

@@ -46,13 +46,13 @@ namespace voxel
         Cell& operator()(unsigned int x, unsigned int y, unsigned int z)
         {
             assert(x < width && y < height && z < depth);
-            return data[x + width * (y + height * z)];
+            return data[x + width * y + slice * z];
         }
         
         const Cell& operator()(unsigned int x, unsigned int y, unsigned int z) const
         {
             assert(x < width && y < height && z < depth);
-            return data[x + width * (y + height * z)];
+            return data[x + width * y + slice * z];
         }
         
         unsigned int getWidth() const { return width; }
@@ -63,6 +63,7 @@ namespace voxel
         unsigned int width;
         unsigned int height;
         unsigned int depth;
+        unsigned int slice;
         
         unique_ptr<Cell[]> data;
     };
