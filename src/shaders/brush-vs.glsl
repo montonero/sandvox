@@ -5,7 +5,11 @@ uniform mat4 ViewProjection;
 
 layout (location = 0) in vec3 in_position;
 
+out vec4 worldPosition;
+
 void main()
 {
-	gl_Position = ViewProjection * (World * vec4(in_position, 1));
+    worldPosition = World * vec4(in_position, 1);
+    
+	gl_Position = ViewProjection * worldPosition;
 }

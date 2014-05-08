@@ -80,12 +80,8 @@ struct Mesh
         
         auto physicsGeometry = make_unique<MeshPhysicsGeometry>(vb, ib);
         
-        clock_t start = clock();
         unique_ptr<btCollisionShape> physicsShape(new btBvhTriangleMeshShape(physicsGeometry.get(), true));
-        clock_t end = clock();
     
-        printf("Physics shape built in %.1f msec\n", (end - start) * 1000.0 / CLOCKS_PER_SEC);
- 
         return Mesh { make_unique<Geometry>(layout, gvb, gib), static_cast<unsigned int>(ib.size()), move(physicsGeometry), move(physicsShape) };
     }
 };
@@ -134,14 +130,18 @@ MeshInstance generateMesh(btDynamicsWorld* world, const voxel::Grid& grid, bool 
     
     voxel::Box box = grid.read(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)));
     
+    clock_t start = clock();
+    
     auto p = mesher->generate(box, vec3(-32, -32, 0), 1, voxel::MeshOptions {});
     
-    clock_t start = clock();
+    clock_t middle = clock();
+    
     shared_ptr<Mesh> mesh = make_shared<Mesh>(Mesh::create(p.first, p.second));
     unique_ptr<PhysicsBody> body = make_unique<PhysicsBody>(world, mesh->physicsShape.get(), 0.f);
+    
     clock_t end = clock();
     
-    printf("Generation finished in %.1f msec\n", (end - start) * 1000.0 / CLOCKS_PER_SEC);
+    printf("Chunk update: mesher %.1f msec, physics %.1f msec\n", (middle - start) * 1000.0 / CLOCKS_PER_SEC, (end - middle) * 1000.0 / CLOCKS_PER_SEC);
     
     return { mesh, move(body) };
 }
@@ -162,12 +162,14 @@ void generateWorld(voxel::Grid& grid)
                 c.material = 0;
             }
     
-    box(20, 20, 10).occupancy = 255;
-    box(22, 22, 10).occupancy = 128;
-    box(24, 24, 10).occupancy = 64;
-    box(26, 26, 10).occupancy = 32;
-    box(28, 28, 10).occupancy = 16;
-    box(30, 30, 10).occupancy = 8;
+    for (int i = 0; i < 8; ++i)
+    {
+        box(20 + i * 2, 16, 5).occupancy = 255 >> i;
+        
+        box(20 + i * 3, 18, 10).occupancy = 255 >> i;
+        box(20 + i * 2, 20, 10).occupancy = 255 >> i;
+        box(20 + i * 1, 22, 10).occupancy = 255 >> i;
+    }
     
     grid.write(voxel::Region(glm::i32vec3(-32, -32, 0), glm::i32vec3(32, 32, 32)), box);
 }
