@@ -107,7 +107,7 @@ namespace ui
         
         Font::FontMetrics metrics = f->getMetrics(size * canvasDensity);
         
-        vec2 pen = pos * canvasDensity - vec2(0, metrics.ascender);
+        vec2 pen = pos * canvasDensity + vec2(0, metrics.ascender);
         
         unsigned int lastch = 0;
         
