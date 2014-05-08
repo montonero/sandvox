@@ -1,8 +1,13 @@
 project(sandvox)
 cmake_minimum_required(VERSION 2.8)
 
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "limited configs" FORCE)
+
 set(CMAKE_OSX_ARCHITECTURES x86_64)
+
 set(CMAKE_CXX_FLAGS "-std=c++1y")
+set(CMAKE_CXX_FLAGS_RELEASE "-g -O3")
+set(CMAKE_C_FLAGS_RELEASE "-g -O3")
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "Build the GLFW example programs")
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "Build the GLFW test programs")
