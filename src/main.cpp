@@ -559,32 +559,8 @@ int main(int argc, const char** argv)
         
         uir.begin(windowWidth, windowHeight, density);
         
-        const char* text1 = "Victor jagt zwölf Boxkämpfer quer über den großen Sylter Deich";
-        const char* text2 = "Ταχίστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός";
-        const char* text3 = "דג סקרן שט בים מאוכזב ולפתע מצא חברה";
-        const char* text4 = "田居に出で 菜摘むわれをぞ 君召すと 求食り追ひゆく 山城の 打酔へる子ら 藻葉干せよ え舟繋けぬ";
-        const char* text5 = "Разъяренный чтец эгоистично бьёт пятью жердями шустрого фехтовальщика.";
- 
-        uir.rect(vec2(10, 200) - 1.f, vec2(100, 100) + 2.f, 5, vec4(1, 1, 1, 0.5));
-        uir.rect(vec2(10, 200), vec2(100, 100), 5, vec4(0.2, 0.2, 0.2, 0.5));
-        
-        uir.rect(vec2(210, 200) - 1.f, vec2(100, 100) + 2.f, 10, vec4(1, 1, 1, 0.5));
-        uir.rect(vec2(210, 200), vec2(100, 100), 10, vec4(0.2, 0.2, 0.2, 0.5));
-        
-        uir.rect(vec2(10, 400) - 1.f, vec2(100, 100) + 2.f, 20, vec4(1, 1, 1, 0.5));
-        uir.rect(vec2(10, 400), vec2(100, 100), 20, vec4(0.2, 0.2, 0.2, 0.5));
-        
-        uir.rect(vec2(210, 400) - 1.f, vec2(100, 100) + 2.f, 40, vec4(1, 1, 1, 0.5));
-        uir.rect(vec2(210, 400), vec2(100, 100), 40, vec4(0.2, 0.2, 0.2, 0.5));
-        
-        uir.rect(vec2(10, 600) - 1.f, vec2(100, 100) + 2.f, 50, vec4(1, 1, 1, 0.5));
-        uir.rect(vec2(10, 600), vec2(100, 100), 50, vec4(0.2, 0.2, 0.2, 0.5));
-        
-        uir.text(vec2(10, 30), "sans", text1, 18, vec4(1));
-        uir.text(vec2(10, 100), "sans", text2, 24, vec4(1));
-        uir.text(vec2(10, 200), "sans", text3, 28, vec4(1));
-        uir.text(vec2(10, 350), "sans", text4, 36, vec4(1));
-        uir.text(vec2(10, 500), "sans", text5, 25, vec4(0, 0, 0, 1));
+        uir.rect(vec2(10, 10), vec2(200, 400), 2, vec4(0.4, 0.4, 0.4, 0.75));
+        uir.text(vec2(17, 15), "sans", "Algorithm: " + string(mesherMC ? "Marching Cubes" : "Surface Nets"), 18, vec4(1));
         
         uir.end();
         
