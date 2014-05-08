@@ -91,8 +91,8 @@ unique_ptr<Image> Image::load(istream& in)
 {
     stbi_io_callbacks callbacks = { stbioRead, stbioSkip, stbioEof };
     
-    int width, height;
-    unique_ptr<unsigned char, void (*)(void*)> data(stbi_load_from_callbacks(&callbacks, &in, &width, &height, nullptr, 4), stbi_image_free);
+    int width, height, comp;
+    unique_ptr<unsigned char, void (*)(void*)> data(stbi_load_from_callbacks(&callbacks, &in, &width, &height, &comp, 4), stbi_image_free);
     
     if (!data)
     {

@@ -266,6 +266,8 @@ TextureRef TextureManager::get(const string& name)
 shared_ptr<Texture> TextureManager::loadTexture(const string& path)
 {
     ifstream in(path, ios::in | ios::binary);
+    if (!in) throw runtime_error("File not found");
+    
     unique_ptr<Image> image = Image::load(in);
     
     shared_ptr<Texture> result = make_shared<Texture>(image->getType(), image->getFormat(), image->getWidth(), image->getHeight(), image->getDepth(), image->getMipLevels());
